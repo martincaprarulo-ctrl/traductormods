@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ModTranslate — Traducción de Mods</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:       #0e0d0b;
+    --surface:  #161410;
+    --panel:    #1c1a16;
+    --border:   #2e2a22;
+    --gold:     #c8a84b;
+    --gold-dim: #7a6530;
+    --amber:    #e8a020;
+    --text:     #d4cfc6;
+    --muted:    #7a7468;
+    --green:    #5fa85a;
+    --red:      #c05050;
+    --radius:   6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', sans-serif; font-size: 14px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px; display: flex; align-items: center; gap: 14px;
+    background: var(--surface); flex-shrink: 0;
+  }
+  .logo-rune {
+    font-family: 'IM Fell English', serif; font-size: 26px; color: var(--gold);
+    line-height: 1; filter: drop-shadow(0 0 6px #c8a84b55);
+  }
+  .logo-text { display: flex; flex-direction: column; }
+  .logo-text h1 { font-family: 'IM Fell English', serif; font-size: 19px; color: var(--gold); letter-spacing: 0.03em; line-height: 1.1; }
+  .logo-text span { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .header-badge { margin-left: auto; font-size: 11px; color: var(--gold-dim); border: 1px solid var(--border); padding: 3px 10px; border-radius: 20px; font-family: 'JetBrains Mono', monospace; }
+
+  main { flex: 1; display: grid; grid-template-columns: 300px 1fr; overflow: hidden; height: calc(100vh - 58px); }
+
+  aside { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+
+  .aside-section { padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .aside-section h2 {
+    font-family: 'IM Fell English', serif; font-size: 12px; color: var(--gold);
+    letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .aside-section h2::before { content: ''; display: inline-block; width: 14px; height: 1px; background: var(--gold-dim); }
+
+  /* Dropzone */
+  .dropzone {
+    border: 1.5px dashed var(--border); border-radius: var(--radius);
+    padding: 18px 14px; text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s; position: relative;
+  }
+  .dropzone:hover, .dropzone.drag-over { border-color: var(--gold-dim); background: #c8a84b08; }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .dropzone-icon { font-size: 22px; margin-bottom: 5px; opacity: 0.6; }
+  .dropzone p { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .dropzone .types { margin-top: 5px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--gold-dim); }
+
+  /* File list */
+  .file-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+
+  .group-box { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .group-header {
+    display: flex; align-items: center; gap: 7px; padding: 6px 9px;
+    background: #181612; cursor: pointer; user-select: none;
+  }
+  .group-header:hover { background: #1e1c16; }
+  .group-icon { font-size: 12px; flex-shrink: 0; }
+  .group-name { flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group-name.gold { color: var(--gold); font-family: 'JetBrains Mono', monospace; }
+  .group-name.amber { color: var(--amber); font-family: 'JetBrains Mono', monospace; }
+  .group-count { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+  .group-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 1px 3px; border-radius: 3px; display: none; flex-shrink: 0; }
+  .group-header:hover .group-remove { display: block; }
+  .group-remove:hover { color: var(--red); }
+  .group-toggle { color: var(--muted); font-size: 9px; transition: transform 0.15s; flex-shrink: 0; }
+  .group-toggle.open { transform: rotate(90deg); }
+  .group-children { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+  .group-children.collapsed { display: none; }
+
+  /* Subgrupo dentro de modpack */
+  .subgroup-header {
+    display: flex; align-items: center; gap: 6px; padding: 5px 9px 5px 20px;
+    background: #141210; cursor: pointer; user-select: none;
+    border-top: 1px solid #221f18;
+  }
+  .subgroup-header:hover { background: #1a1814; }
+  .subgroup-toggle { color: var(--muted); font-size: 9px; transition: transform 0.15s; flex-shrink: 0; }
+  .subgroup-toggle.open { transform: rotate(90deg); }
+  .subgroup-children { display: flex; flex-direction: column; }
+  .subgroup-children.collapsed { display: none; }
+
+  /* File items */
+  .file-item {
+    display: flex; align-items: center; gap: 7px; padding: 5px 9px;
+    background: var(--panel); border: 1px solid transparent;
+    cursor: pointer; transition: border-color 0.12s; position: relative;
+  }
+  .file-item:hover { background: #1c1a16; border-color: #3a3628; }
+  .file-item.active { border-color: var(--gold) !important; background: #1f1c14; }
+  .group-children > .file-item, .subgroup-children > .file-item { border-radius: 0; border-left: none; border-right: none; border-bottom: none; }
+  .standalone-item { border-radius: var(--radius); border: 1px solid var(--border); }
+  .standalone-item:hover { border-color: var(--gold-dim) !important; }
+
+  .file-ext { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; flex-shrink: 0; }
+  .ext-snbt { background: #3a2a6a; color: #a080e0; }
+  .ext-json { background: #1a3a2a; color: #50c878; }
+  .ext-lang { background: #3a2010; color: #e07040; }
+  .file-name { flex: 1; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-status { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-pending  { background: var(--muted); }
+  .status-loading  { background: var(--amber); animation: pulse 1s infinite; }
+  .status-done     { background: var(--green); }
+  .status-error    { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .file-remove { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 1px 3px; border-radius: 3px; display: none; }
+  .file-item:hover .file-remove { display: block; }
+  .file-remove:hover { color: var(--red); }
+
+  /* Config */
+  .config-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 9px; }
+  .config-row label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .config-row select, .config-row input[type="text"], .config-row input[type="password"] {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); padding: 6px 9px; font-size: 12px; font-family: 'Inter', sans-serif;
+    width: 100%; outline: none; transition: border-color 0.15s;
+  }
+  .config-row select:focus, .config-row input:focus { border-color: var(--gold-dim); }
+  .api-key-hint { font-size: 10px; color: var(--gold-dim); margin-top: 2px; }
+  .api-key-hint a { color: var(--gold-dim); }
+
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; cursor: pointer; }
+  .checkbox-row input[type="checkbox"] { accent-color: var(--gold); width: 14px; height: 14px; cursor: pointer; }
+  .checkbox-row span { font-size: 12px; color: var(--text); }
+
+  .btn-primary {
+    width: 100%; padding: 9px;
+    background: linear-gradient(135deg, #b89440, #c8a84b); color: #0e0d0b;
+    border: none; border-radius: var(--radius); font-family: 'IM Fell English', serif;
+    font-size: 14px; cursor: pointer; transition: opacity 0.15s, transform 0.1s; letter-spacing: 0.04em;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Editor */
+  .editor-panel { display: flex; flex-direction: column; overflow: hidden; }
+  .editor-toolbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 9px 18px; display: flex; align-items: center; gap: 9px; flex-shrink: 0;
+  }
+  .toolbar-filename { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--gold); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolbar-filename span { color: var(--muted); }
+  .btn-tool { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 5px 11px; border-radius: var(--radius); font-size: 11px; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; flex-shrink: 0; }
+  .btn-tool:hover { border-color: var(--gold-dim); color: var(--gold); }
+  .btn-tool:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-tool.gold { border-color: var(--gold-dim); color: var(--gold); }
+  .btn-tool.gold:hover { background: #c8a84b15; }
+
+  /* Progress panel */
+  .progress-panel {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 18px; flex-shrink: 0; display: none;
+    flex-direction: column; gap: 6px;
+  }
+  .progress-panel.visible { display: flex; }
+  .progress-top { display: flex; align-items: center; justify-content: space-between; }
+  .progress-label { font-size: 11px; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .progress-label .current-file { color: var(--gold); }
+  .progress-pct { font-size: 11px; color: var(--gold); font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .progress-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius: 3px; transition: width 0.3s; width: 0%; }
+  .progress-sub { display: flex; align-items: center; justify-content: space-between; }
+  .progress-sub-label { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .progress-counter { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  .editor-split { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; min-height: 0; }
+  .editor-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  .editor-pane:last-child { border-right: none; }
+  .pane-header { padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .pane-header .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .pane-header .dot.gold { background: var(--gold); }
+  textarea { flex: 1; background: var(--bg); color: var(--text); border: none; outline: none; resize: none; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.65; width: 100%; }
+
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); text-align: center; padding: 40px; }
+  .empty-state .rune { font-family: 'IM Fell English', serif; font-size: 44px; color: var(--border); line-height: 1; }
+  .empty-state p { font-size: 12px; line-height: 1.6; }
+
+  .log-panel { border-top: 1px solid var(--border); background: var(--surface); padding: 5px 14px; max-height: 68px; overflow-y: auto; flex-shrink: 0; }
+  .log-line { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.7; color: var(--muted); }
+  .log-line.ok   { color: var(--green); }
+  .log-line.err  { color: var(--red); }
+  .log-line.info { color: var(--amber); }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-rune">✦</div>
+  <div class="logo-text">
+    <h1>ModTranslate</h1>
+    <span>Traductor automático de mods · Gemini Flash</span>
+  </div>
+  <div class="header-badge">v3.0</div>
+</header>
+
+<main>
+  <aside>
+    <div class="aside-section">
+      <h2>Archivos</h2>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" multiple accept=".snbt,.json,.lang,.jar,.zip,.mrpack">
+        <div class="dropzone-icon">📂</div>
+        <p>Arrastrá archivos <strong style="color:var(--gold)">o la carpeta entera</strong> de la instancia</p>
+        <div class="types">.jar · .mrpack · .zip · .snbt · .json · .lang · 📁 carpetas</div>
+      </div>
+      <button onclick="document.getElementById('folderInput').click()" style="margin-top:8px;width:100%;padding:7px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);color:var(--muted);font-size:11px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--gold-dim)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+        📁 Seleccionar carpeta de instancia
+      </button>
+      <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
+    </div>
+
+    <div class="file-list" id="fileList">
+      <div style="padding:8px;color:var(--muted);font-size:11px;text-align:center;">Ningún archivo cargado</div>
+    </div>
+
+    <div class="aside-section" style="border-top:1px solid var(--border);">
+      <h2>Configuración</h2>
+
+      <div class="config-row">
+        <label>API Key de Gemini</label>
+        <input type="password" id="apiKey" placeholder="AIza...">
+        <div class="api-key-hint">Gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+      </div>
+
+      <div class="config-row">
+        <label>Idioma destino</label>
+        <select id="targetLang">
+          <option value="es-AR">Español (Argentina) — informal</option>
+          <option value="es-ES">Español (España)</option>
+          <option value="es-MX">Español (México)</option>
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </div>
+
+      <div class="config-row">
+        <label>Contexto del mod (opcional)</label>
+        <input type="text" id="modContext" placeholder="ej: Botania, mod de magia floral">
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="postProcess" checked>
+        <span>Corregir tildes incorrectas en nombres</span>
+      </label>
+
+      <button class="btn-primary" id="translateBtn" disabled>✦ Traducir todo</button>
+    </div>
+  </aside>
+
+  <div class="editor-panel">
+    <div class="editor-toolbar">
+      <div class="toolbar-filename" id="toolbarFilename"><span>Seleccioná un archivo para ver su contenido</span></div>
+      <button class="btn-tool" id="downloadBtn" disabled onclick="downloadCurrent()">⬇ Descargar</button>
+      <button class="btn-tool gold" id="downloadAllBtn" disabled onclick="downloadAll()">⬇ Descargar todo</button>
+    </div>
+
+    <!-- Progress panel mejorado -->
+    <div class="progress-panel" id="progressPanel">
+      <div class="progress-top">
+        <div class="progress-label">Traduciendo: <span class="current-file" id="progressFile">—</span></div>
+        <div class="progress-pct" id="progressPct">0%</div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-sub">
+        <div class="progress-sub-label" id="progressSub">Iniciando…</div>
+        <div class="progress-counter" id="progressCounter">0 / 0</div>
+      </div>
+    </div>
+
+    <div class="editor-split">
+      <div class="empty-state" id="emptyState" style="grid-column:1/-1;">
+        <div class="rune">⟁</div>
+        <p>Cargá archivos y hacé clic en <strong style="color:var(--gold)">Traducir todo</strong><br>para comenzar la traducción automática.</p>
+        <p style="font-size:10px;color:var(--border);margin-top:8px;">Soporta .jar, modpacks de Modrinth (.mrpack), modpacks de CurseForge (.zip), .snbt, .json y .lang</p>
+      </div>
+      <div class="editor-pane" id="sourcePane" style="display:none;">
+        <div class="pane-header"><div class="dot"></div> Original</div>
+        <textarea id="sourceArea" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="editor-pane" id="targetPane" style="display:none;">
+        <div class="pane-header"><div class="dot gold"></div> Traducción</div>
+        <textarea id="targetArea" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <div class="log-panel" id="logPanel"></div>
+  </div>
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+// file:    { id, name, displayName, ext, original, translated, status, groupId }
+// group:   { id, type:'jar'|'modpack', name, zipObj?, fileIds, subgroups?, collapsed }
+const state = { files: [], groups: [], activeFileId: null, nextId: 1 };
+function uid() { return state.nextId++; }
+
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const fileInput        = document.getElementById('fileInput');
+const dropzone         = document.getElementById('dropzone');
+const fileListEl       = document.getElementById('fileList');
+const translateBtn     = document.getElementById('translateBtn');
+const downloadBtn      = document.getElementById('downloadBtn');
+const downloadAllBtn   = document.getElementById('downloadAllBtn');
+const sourceArea       = document.getElementById('sourceArea');
+const targetArea       = document.getElementById('targetArea');
+const logPanel         = document.getElementById('logPanel');
+const emptyState       = document.getElementById('emptyState');
+const sourcePaneEl     = document.getElementById('sourcePane');
+const targetPaneEl     = document.getElementById('targetPane');
+const toolbarFilename  = document.getElementById('toolbarFilename');
+const progressPanel    = document.getElementById('progressPanel');
+const progressFile     = document.getElementById('progressFile');
+const progressPct      = document.getElementById('progressPct');
+const progressFill     = document.getElementById('progressFill');
+const progressSub      = document.getElementById('progressSub');
+const progressCounter  = document.getElementById('progressCounter');
+
+// ─── File detection ───────────────────────────────────────────────────────────
+function getExt(name) {
+  const e = name.split('.').pop().toLowerCase();
+  if (['snbt','lang','jar','zip','mrpack'].includes(e)) return e;
+  return 'json';
+}
+
+function isTranslatable(path) {
+  if (path.endsWith('/')) return false;
+  const p = path.toLowerCase();
+  if (p.includes('/lang/') && (p.endsWith('.json') || p.endsWith('.lang'))) return true;
+  if (p.endsWith('.snbt')) return true;
+  if (p.includes('patchouli') && p.endsWith('.json')) return true;
+  return false;
+}
+
+function isJar(path) { return path.toLowerCase().endsWith('.jar'); }
+
+// ─── Drop / Input ─────────────────────────────────────────────────────────────
+fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
+document.getElementById('folderInput').addEventListener('change', e => handleFiles([...e.target.files]));
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', async e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  // Usar FileSystem API para soportar carpetas
+  const items = [...(e.dataTransfer.items || [])];
+  const hasDir = items.some(i => i.webkitGetAsEntry && i.webkitGetAsEntry()?.isDirectory);
+  if (hasDir) {
+    log('Leyendo carpeta…', 'info');
+    const files = await readDroppedItems(items);
+    await handleFiles(files);
+  } else {
+    await handleFiles([...e.dataTransfer.files]);
+  }
+});
+
+// Leer recursivamente carpetas dropeadas con FileSystem API
+async function readDroppedItems(items) {
+  const files = [];
+  async function readEntry(entry) {
+    if (entry.isFile) {
+      const file = await new Promise(r => entry.file(r));
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      // readEntries puede devolver hasta 100 a la vez, hay que loopear
+      let batch;
+      do {
+        batch = await new Promise(r => reader.readEntries(r));
+        for (const e of batch) await readEntry(e);
+      } while (batch.length > 0);
+    }
+  }
+  for (const item of items) {
+    const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+    if (entry) await readEntry(entry);
+    else if (item.getAsFile) files.push(item.getAsFile());
+  }
+  return files;
+}
+
+// Rutas que NO queremos traducir aunque sean .json (configs técnicas)
+function isConfigJunk(path) {
+  const p = path.toLowerCase().replace(/\\/g, '/');
+  const junkDirs = ['/config/', '/defaultconfigs/', '/saves/', '/logs/', '/crash-reports/', '/resourcepacks/', '/shaderpacks/', '/screenshots/'];
+  const junkFiles = ['fabric.mod.json', 'mods.toml', 'pack.mcmeta', 'pack.json', 'manifest.json'];
+  if (junkDirs.some(d => p.includes(d))) return true;
+  if (junkFiles.some(n => p.endsWith(n))) return true;
+  return false;
+}
+
+async function handleFiles(files) {
+  // Separar por tipo
+  const jars     = files.filter(f => getExt(f.name) === 'jar');
+  const mrpacks  = files.filter(f => getExt(f.name) === 'mrpack');
+  const zips     = files.filter(f => getExt(f.name) === 'zip');
+  const singles  = files.filter(f => {
+    const ext = getExt(f.name);
+    if (['jar','mrpack','zip'].includes(ext)) return false;
+    if (isConfigJunk(f.name)) return false;
+    if (!['snbt','lang','json'].includes(ext)) return false;
+    // Si viene de carpeta, solo tomar los que son traducibles por ruta
+    const path = (f.webkitRelativePath || f.name).toLowerCase();
+    return path.includes('/lang/') || path.includes('patchouli') || path.endsWith('.snbt');
+  });
+
+  log(`Procesando: ${jars.length} JAR(s), ${mrpacks.length} mrpack(s), ${zips.length} ZIP(s), ${singles.length} archivo(s) suelto(s)…`, 'info');
+
+  for (const f of mrpacks) await loadMrpack(f);
+  for (const f of zips)    await loadCurseForgeZip(f);
+
+  // JARs: agrupar bajo un modpack virtual si vienen muchos (carpeta de mods)
+  if (jars.length > 3) {
+    // Probablemente es la carpeta mods/ entera — crear grupo modpack
+    const pgid = uid();
+    const subgroupIds = [];
+    log(`Detectada carpeta de mods: ${jars.length} JARs`, 'info');
+    for (const f of jars) {
+      const childGid = await loadJar(f, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+    const totalFiles = subgroupIds.reduce((a, gid) => {
+      const g = state.groups.find(g => g.id === gid); return a + (g ? g.fileIds.length : 0);
+    }, 0);
+    if (subgroupIds.length > 0) {
+      state.groups.push({ id: pgid, type: 'modpack', subtype: 'folder', name: `📁 Carpeta de mods (${jars.length} JARs)`, fileIds: [], subgroupIds, collapsed: false, icon: '📁' });
+      log(`✓ Carpeta procesada: ${subgroupIds.length} mods con ${totalFiles} archivo(s) traducibles.`, 'ok');
+    }
+  } else {
+    for (const f of jars) await loadJar(f, null);
+  }
+
+  for (const f of singles) await loadSingleFile(f);
+
+  renderFileList();
+  updateButtons();
+}
+
+// ─── Single file ──────────────────────────────────────────────────────────────
+function loadSingleFile(f) {
+  return new Promise(resolve => {
+    if (state.files.find(x => x.name === f.name && !x.groupId)) { resolve(); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      state.files.push({ id: uid(), name: f.name, displayName: f.name, ext: getExt(f.name), original: e.target.result, translated: '', status: 'pending', groupId: null });
+      resolve();
+    };
+    reader.readAsText(f, 'UTF-8');
+  });
+}
+
+// ─── JAR ──────────────────────────────────────────────────────────────────────
+async function loadJar(f, parentGroupId) {
+  log(`Abriendo ${f.name}…`, 'info');
+  try {
+    const buf  = await f.arrayBuffer();
+    const zip  = await JSZip.loadAsync(buf);
+    const gid  = uid();
+    const fids = [];
+    const paths = Object.keys(zip.files).filter(isTranslatable);
+    if (!paths.length) { log(`⚠ ${f.name}: sin archivos traducibles.`, 'err'); return null; }
+    for (const path of paths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: gid });
+      fids.push(fid);
+    }
+    const group = { id: gid, type: 'jar', name: f.name, zipObj: zip, fileIds: fids, collapsed: true, parentGroupId: parentGroupId || null };
+    state.groups.push(group);
+    log(`✓ ${f.name}: ${fids.length} archivo(s).`, 'ok');
+    return gid;
+  } catch (err) { log(`✗ Error al abrir ${f.name}: ${err.message}`, 'err'); return null; }
+}
+
+// ─── Modrinth .mrpack ─────────────────────────────────────────────────────────
+async function loadMrpack(f) {
+  log(`Abriendo modpack Modrinth: ${f.name}…`, 'info');
+  try {
+    const buf = await f.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+
+    // .mrpack tiene overrides/ con archivos de configuración/quests
+    // y modrinth.index.json con la lista de mods (que se descargan por URL, no están en el zip)
+    const pgid = uid();
+    const subgroupIds = [];
+    const directFids  = [];
+
+    // 1. Archivos directamente traducibles en overrides/
+    const overridePaths = Object.keys(zip.files).filter(p => isTranslatable(p));
+    for (const path of overridePaths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: pgid });
+      directFids.push(fid);
+    }
+
+    // 2. JARs embebidos dentro del zip (raro pero posible en algunos mrpack)
+    const jarPaths = Object.keys(zip.files).filter(p => isJar(p) && !p.endsWith('/'));
+    for (const jarPath of jarPaths) {
+      const jarBuf  = await zip.files[jarPath].async('arraybuffer');
+      const jarFile = new File([jarBuf], jarPath.split('/').pop(), { type: 'application/java-archive' });
+      const childGid = await loadJar(jarFile, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+
+    const total = directFids.length + subgroupIds.reduce((a, gid) => {
+      const g = state.groups.find(g => g.id === gid);
+      return a + (g ? g.fileIds.length : 0);
+    }, 0);
+
+    state.groups.push({ id: pgid, type: 'modpack', subtype: 'modrinth', name: f.name, fileIds: directFids, subgroupIds, collapsed: false });
+    log(`✓ Modpack Modrinth: ${total} archivo(s) traducibles encontrados.`, 'ok');
+    if (jarPaths.length === 0 && directFids.length === 0) {
+      log(`ℹ Los mods de Modrinth se descargan por URL y no están en el .mrpack. Cargá los .jar por separado.`, 'info');
+    }
+  } catch (err) { log(`✗ Error al abrir ${f.name}: ${err.message}`, 'err'); }
+}
+
+// ─── CurseForge .zip ──────────────────────────────────────────────────────────
+async function loadCurseForgeZip(f) {
+  log(`Abriendo modpack CurseForge: ${f.name}…`, 'info');
+  try {
+    const buf = await f.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+
+    // CurseForge zips tienen: manifest.json, overrides/ y a veces mods/ con JARs
+    const isCurseForge = zip.files['manifest.json'] !== undefined;
+    const pgid = uid();
+    const subgroupIds = [];
+    const directFids  = [];
+
+    // Archivos traducibles directos (overrides/config/, etc.)
+    const directPaths = Object.keys(zip.files).filter(p => isTranslatable(p));
+    for (const path of directPaths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: pgid });
+      directFids.push(fid);
+    }
+
+    // JARs dentro del zip
+    const jarPaths = Object.keys(zip.files).filter(p => isJar(p) && !p.endsWith('/'));
+    for (const jarPath of jarPaths) {
+      const jarBuf  = await zip.files[jarPath].async('arraybuffer');
+      const jarFile = new File([jarBuf], jarPath.split('/').pop(), { type: 'application/java-archive' });
+      const childGid = await loadJar(jarFile, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+
+    const total = directFids.length + subgroupIds.reduce((a, gid) => {
+      const g = state.groups.find(g => g.id === gid);
+      return a + (g ? g.fileIds.length : 0);
+    }, 0);
+
+    const subtype = isCurseForge ? 'curseforge' : 'zip';
+    const icon = isCurseForge ? '🔶' : '🗜️';
+    state.groups.push({ id: pgid, type: 'modpack', subtype, name: f.name, fileIds: directFids, subgroupIds, collapsed: false, icon });
+    log(`✓ Modpack CurseForge: ${total} archivo(s) traducibles encontrados.`, 'ok');
+    if (jarPaths.length === 0 && directFids.length === 0) {
+      log(`ℹ Los mods de CurseForge no vienen en el zip. Descargalos desde la app y cargá los .jar por separado.`, 'info');
+    }
+  } catch (err) { log(`✗ Error al abrir ${f.name}: ${err.message}`, 'err'); }
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderFileList() {
+  const topGroups   = state.groups.filter(g => !g.parentGroupId);
+  const standalones = state.files.filter(f => !f.groupId);
+
+  if (topGroups.length === 0 && standalones.length === 0) {
+    fileListEl.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:11px;text-align:center;">Ningún archivo cargado</div>';
+    return;
+  }
+
+  let html = '';
+  for (const g of topGroups) html += renderGroup(g, 0);
+  for (const f of standalones) html += `<div class="standalone-item">${fileItemHtml(f)}</div>`;
+  fileListEl.innerHTML = html;
+}
+
+function groupAllFiles(g) {
+  let ids = [...g.fileIds];
+  if (g.subgroupIds) for (const sid of g.subgroupIds) {
+    const sg = state.groups.find(x => x.id === sid);
+    if (sg) ids = ids.concat(groupAllFiles(sg));
+  }
+  return ids;
+}
+
+function renderGroup(g, depth) {
+  const allFids  = groupAllFiles(g);
+  const allFiles = allFids.map(id => state.files.find(f => f.id === id)).filter(Boolean);
+  const done     = allFiles.filter(f => f.status === 'done').length;
+  const icon     = g.icon || (g.type === 'modpack' ? (g.subtype === 'modrinth' ? '🟩' : '🔶') : '📦');
+  const nameClass = g.type === 'modpack' ? 'amber' : 'gold';
+
+  let html = `<div class="group-box" id="grp-${g.id}">
+    <div class="group-header" onclick="toggleGroup(${g.id})">
+      <span class="group-icon">${icon}</span>
+      <span class="group-name ${nameClass}">${g.name}</span>
+      <span class="group-count">${done}/${allFiles.length}</span>
+      <button class="group-remove" onclick="removeGroup(event,${g.id})">✕</button>
+      <span class="group-toggle ${g.collapsed ? '' : 'open'}">▶</span>
+    </div>
+    <div class="group-children ${g.collapsed ? 'collapsed' : ''}">`;
+
+  // Archivos directos del grupo
+  for (const fid of g.fileIds) {
+    const f = state.files.find(f => f.id === fid);
+    if (f) html += fileItemHtml(f);
+  }
+
+  // Subgrupos (jars dentro de modpack)
+  if (g.subgroupIds) {
+    for (const sid of g.subgroupIds) {
+      const sg = state.groups.find(x => x.id === sid);
+      if (!sg) continue;
+      const sgFiles = sg.fileIds.map(id => state.files.find(f => f.id === id)).filter(Boolean);
+      const sgDone  = sgFiles.filter(f => f.status === 'done').length;
+      html += `<div>
+        <div class="subgroup-header" onclick="toggleGroup(${sg.id})">
+          <span class="group-icon">📦</span>
+          <span class="group-name gold" style="font-size:10px;">${sg.name}</span>
+          <span class="group-count">${sgDone}/${sgFiles.length}</span>
+          <span class="subgroup-toggle ${sg.collapsed ? '' : 'open'}">▶</span>
+        </div>
+        <div class="subgroup-children ${sg.collapsed ? 'collapsed' : ''}">
+          ${sgFiles.map(f => fileItemHtml(f)).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  html += `</div></div>`;
+  return html;
+}
+
+function fileItemHtml(f) {
+  const active = state.activeFileId === f.id ? 'active' : '';
+  return `<div class="file-item ${active}" onclick="selectFile(${f.id})">
+    <span class="file-ext ext-${f.ext}">${f.ext}</span>
+    <span class="file-name" title="${f.name}">${f.displayName}</span>
+    <span class="file-status status-${f.status}"></span>
+    ${!f.groupId ? `<button class="file-remove" onclick="removeFile(event,${f.id})">✕</button>` : ''}
+  </div>`;
+}
+
+function toggleGroup(gid) {
+  const g = state.groups.find(g => g.id === gid);
+  if (g) { g.collapsed = !g.collapsed; renderFileList(); }
+}
+
+function removeGroup(e, gid) {
+  e.stopPropagation();
+  const g = state.groups.find(g => g.id === gid);
+  if (!g) return;
+  const allFids = groupAllFiles(g);
+  if (allFids.includes(state.activeFileId)) { state.activeFileId = null; clearEditor(); }
+  state.files  = state.files.filter(f => !allFids.includes(f.id));
+  // Eliminar subgrupos también
+  const removeGroupIds = (id) => {
+    const sg = state.groups.find(g => g.id === id);
+    if (sg && sg.subgroupIds) sg.subgroupIds.forEach(removeGroupIds);
+    state.groups = state.groups.filter(g => g.id !== id);
+  };
+  removeGroupIds(gid);
+  renderFileList(); updateButtons();
+}
+
+function removeFile(e, fid) {
+  e.stopPropagation();
+  if (state.activeFileId === fid) { state.activeFileId = null; clearEditor(); }
+  state.files = state.files.filter(f => f.id !== fid);
+  renderFileList(); updateButtons();
+}
+
+function selectFile(fid) {
+  saveCurrentEdits();
+  state.activeFileId = fid;
+  const f = state.files.find(f => f.id === fid);
+  if (!f) return;
+  showEditor(f); renderFileList();
+  toolbarFilename.innerHTML = `<span>Archivo:</span> ${f.name}`;
+  downloadBtn.disabled = !f.translated;
+}
+
+function saveCurrentEdits() {
+  if (state.activeFileId) {
+    const f = state.files.find(f => f.id === state.activeFileId);
+    if (f) f.translated = targetArea.value;
+  }
+}
+
+function showEditor(f) {
+  emptyState.style.display = 'none';
+  sourcePaneEl.style.display = 'flex';
+  targetPaneEl.style.display = 'flex';
+  sourceArea.value = f.original;
+  targetArea.value = f.translated;
+}
+
+function clearEditor() {
+  emptyState.style.display = 'flex';
+  sourcePaneEl.style.display = 'none';
+  targetPaneEl.style.display = 'none';
+  toolbarFilename.innerHTML = '<span>Seleccioná un archivo para ver su contenido</span>';
+  downloadBtn.disabled = true;
+}
+
+function updateButtons() {
+  translateBtn.disabled = state.files.length === 0;
+  downloadAllBtn.disabled = !state.files.some(f => f.translated);
+}
+
+// ─── Post-procesado: tildes incorrectas ───────────────────────────────────────
+// Palabras que Gemini tiende a acentuar mal cuando son nombres propios de ítems
+const TILDE_FIXES = [
+  [/\bTomó\b/g, 'Tomo'],
+  [/\btomó\b/g, 'tomo'],
+  [/\bEspectró\b/g, 'Espectro'],
+  [/\bespectró\b/g, 'espectro'],
+  [/\bCristalió\b/g, 'Cristalió'],   // no fix, es correcto
+  [/\bMinó\b/g, 'Mino'],
+  [/\bminó\b/g, 'mino'],
+  [/\bPortó\b/g, 'Porto'],
+  [/\bGólem\b/g, 'Gólem'],           // este sí lleva tilde, no tocar
+  // Patrón genérico: palabras en mayúscula seguidas de "ó" donde debería ser "o"
+  // Solo aplica en contexto de nombres de ítems (entre comillas en JSON o al inicio de valor en .lang)
+];
+
+// Estrategia más robusta: revisar sólo los valores de texto, no las claves
+function postProcessTranslation(content, ext) {
+  if (ext === 'json') {
+    return content.replace(/"([^"]+)":\s*"([^"]+)"/g, (match, key, value) => {
+      let fixed = value;
+      // Corregir "Tomó" → "Tomo" solo cuando es parte de un nombre propio (empieza con mayúscula y no es verbo conjugado)
+      fixed = fixFalseAccents(fixed);
+      return `"${key}": "${fixed}"`;
+    });
+  } else if (ext === 'lang') {
+    return content.split('\n').map(line => {
+      if (line.startsWith('#') || !line.includes('=')) return line;
+      const eqIdx = line.indexOf('=');
+      const key   = line.slice(0, eqIdx);
+      const val   = line.slice(eqIdx + 1);
+      return key + '=' + fixFalseAccents(val);
+    }).join('\n');
+  } else if (ext === 'snbt') {
+    // En SNBT los strings están entre comillas dobles
+    return content.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match, inner) => {
+      return `"${fixFalseAccents(inner)}"`;
+    });
+  }
+  return content;
+}
+
+function fixFalseAccents(text) {
+  // Lista de palabras que frecuentemente Gemini acenta mal en nombres de ítems
+  // La heurística: si la palabra termina en -ó pero en el original era -o (nombre, no verbo),
+  // y la palabra es corta (≤ 8 chars) y empieza con mayúscula dentro de un nombre compuesto
+  const falseAccents = [
+    ['Tomó', 'Tomo'], ['tomó', 'tomo'],
+    ['Minó', 'Mino'], ['minó', 'mino'],
+    ['Portó', 'Porto'], ['portó', 'porto'],
+    ['Espectró', 'Espectro'], ['espectró', 'espectro'],
+    ['Cristalió', 'Cristalio'],
+    ['Altó', 'Alto'], ['altó', 'alto'],
+    ['Arcané', 'Arcane'],
+    ['Vocé', 'Voce'],
+    ['Rituló', 'Ritulo'],
+  ];
+  let result = text;
+  for (const [wrong, right] of falseAccents) {
+    result = result.replaceAll(wrong, right);
+  }
+  return result;
+}
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+const LANG_LABELS = {
+  'es-AR': 'español argentino informal (tuteo, vocabulario rioplatense)',
+  'es-ES': 'español de España', 'es-MX': 'español mexicano informal',
+  'pt-BR': 'português brasileiro informal', 'fr': 'français', 'de': 'Deutsch',
+};
+
+function buildPrompt(file, lang, modContext) {
+  const langLabel = LANG_LABELS[lang] || lang;
+  const ctx = modContext ? `El mod se llama "${modContext}".` : '';
+  const typeHint = {
+    snbt: `Archivo de quests SNBT. Traducí SOLO los valores de texto legible (title, subtitle, description, tasks). NO toques: IDs entre corchetes [item:namespace], comandos, claves técnicas, números.`,
+    json: `Archivo JSON de Patchouli o lang. Si es Patchouli: traducí "name", "description", "text", "title", "header". Si es lang JSON: traducí solo los valores, no las claves. NO toques: IDs, comandos, placeholders (%s, %d).`,
+    lang: `Archivo lang (clave=valor). Traducí SOLO los valores (después del =). NO toques las claves ni los placeholders (%s, %d, %1$s).`,
+  }[file.ext] || 'Traducí solo el texto visible al usuario.';
+
+  return `Sos un traductor experto en mods de Minecraft. Traducí el siguiente archivo al ${langLabel}.
+${ctx}
+${typeHint}
+
+Reglas:
+- Mantené el formato exacto (estructura, sangría, caracteres especiales).
+- Conservá el formato de color §a, §b, etc.
+- Los nombres de ítems son sustantivos, NO los conjugues como verbos. Ej: "Tomo" no "Tomó", "Porto" no "Portó".
+- Devolvé ÚNICAMENTE el archivo traducido, sin explicaciones ni comentarios.
+
+Archivo:
+\`\`\`
+${file.original}
+\`\`\``;
+}
+
+// ─── Log ──────────────────────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const div = document.createElement('div');
+  div.className = `log-line ${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logPanel.appendChild(div);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+// ─── Progress ─────────────────────────────────────────────────────────────────
+function setProgress(done, total, fileName, subLabel) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  progressFill.style.width = `${pct}%`;
+  progressPct.textContent  = `${pct}%`;
+  progressFile.textContent = fileName || '—';
+  progressCounter.textContent = `${done} / ${total}`;
+  if (subLabel) progressSub.textContent = subLabel;
+}
+
+// ─── Translate ────────────────────────────────────────────────────────────────
+translateBtn.addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { log('⚠ Ingresá tu API key de Gemini.', 'err'); return; }
+
+  const lang       = document.getElementById('targetLang').value;
+  const modContext = document.getElementById('modContext').value.trim();
+  const doPost     = document.getElementById('postProcess').checked;
+  const pending    = state.files.filter(f => f.status === 'pending' || f.status === 'error');
+  if (!pending.length) { log('No hay archivos pendientes.', 'info'); return; }
+
+  translateBtn.disabled = true;
+  progressPanel.classList.add('visible');
+  setProgress(0, pending.length, '—', 'Iniciando…');
+
+  let done = 0; const total = pending.length;
+
+  for (const file of pending) {
+    file.status = 'loading';
+    renderFileList();
+    const af = state.files.find(f => f.id === state.activeFileId);
+    if (af && af.id === file.id) showEditor(file);
+    setProgress(done, total, file.displayName, `Traduciendo archivo ${done + 1} de ${total}…`);
+    log(`Traduciendo ${file.displayName}…`, 'info');
+
+    try {
+      const prompt = buildPrompt(file, lang, modContext);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      let translated = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      translated = translated.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '').trim();
+      if (!translated) throw new Error('Respuesta vacía de la API');
+
+      // Post-procesado
+      if (doPost) translated = postProcessTranslation(translated, file.ext);
+
+      file.translated = translated;
+      file.status = 'done';
+      log(`✓ ${file.displayName}`, 'ok');
+    } catch (err) {
+      file.status = 'error';
+      log(`✗ ${file.displayName}: ${err.message}`, 'err');
+    }
+
+    done++;
+    setProgress(done, total, done < total ? pending[done]?.displayName || '—' : '✓ Completado', done < total ? `Traduciendo archivo ${done + 1} de ${total}…` : 'Traducción finalizada');
+    renderFileList();
+    const activeF = state.files.find(f => f.id === state.activeFileId);
+    if (activeF && activeF.id === file.id) { showEditor(file); downloadBtn.disabled = !file.translated; }
+    updateButtons();
+    if (done < total) await sleep(4200);
+  }
+
+  translateBtn.disabled = state.files.length === 0;
+  log(`Listo: ${done}/${total} archivos procesados.`, 'ok');
+});
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+function downloadCurrent() {
+  saveCurrentEdits();
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (!f || !f.translated) return;
+  triggerDownload(f.displayName, f.translated);
+}
+
+async function downloadAll() {
+  saveCurrentEdits();
+  // Grupos top-level
+  const topGroups = state.groups.filter(g => !g.parentGroupId);
+  for (const g of topGroups) {
+    if (g.type === 'jar') {
+      await downloadJar(g);
+    } else if (g.type === 'modpack') {
+      // Descargar cada jar subgrupo
+      if (g.subgroupIds) {
+        for (const sid of g.subgroupIds) {
+          const sg = state.groups.find(x => x.id === sid);
+          if (sg) await downloadJar(sg);
+        }
+      }
+      // Archivos directos del modpack como zip
+      const directFiles = g.fileIds.map(id => state.files.find(f => f.id === id)).filter(f => f && f.translated);
+      if (directFiles.length) {
+        const z = new JSZip();
+        for (const f of directFiles) z.file(f.name, f.translated);
+        const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+        triggerDownloadBlob(g.name.replace(/\.(zip|mrpack)$/, '') + '_traducido.zip', blob);
+        await sleep(300);
+      }
+    }
+  }
+  // Archivos sueltos
+  for (const f of state.files.filter(f => !f.groupId && f.translated)) {
+    triggerDownload(f.displayName, f.translated);
+    await sleep(150);
+  }
+}
+
+async function downloadJar(g) {
+  const files = g.fileIds.map(id => state.files.find(f => f.id === id)).filter(f => f && f.translated);
+  if (!files.length) return;
+  log(`Empaquetando ${g.name}…`, 'info');
+  try {
+    const zip = g.zipObj;
+    for (const f of files) zip.file(f.name, f.translated);
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    triggerDownloadBlob(g.name, blob);
+    log(`✓ ${g.name} descargado.`, 'ok');
+    await sleep(300);
+  } catch (err) { log(`✗ Error al empaquetar ${g.name}: ${err.message}`, 'err'); }
+}
+
+function triggerDownload(filename, content) {
+  triggerDownloadBlob(filename, new Blob([content], { type: 'text/plain;charset=utf-8' }));
+}
+
+function triggerDownloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+targetArea.addEventListener('input', () => {
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (f) { f.translated = targetArea.value; downloadBtn.disabled = !targetArea.value; updateButtons(); }
+});
+</script>
+</body>
+</html>
