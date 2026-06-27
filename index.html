@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ModTranslate — Traducción de Mods</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:       #0e0d0b;
+    --surface:  #161410;
+    --panel:    #1c1a16;
+    --border:   #2e2a22;
+    --gold:     #c8a84b;
+    --gold-dim: #7a6530;
+    --amber:    #e8a020;
+    --text:     #d4cfc6;
+    --muted:    #7a7468;
+    --green:    #5fa85a;
+    --red:      #c05050;
+    --radius:   6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .logo-rune {
+    font-family: 'IM Fell English', serif;
+    font-size: 28px; color: var(--gold); line-height: 1;
+    filter: drop-shadow(0 0 6px #c8a84b55);
+  }
+  .logo-text { display: flex; flex-direction: column; }
+  .logo-text h1 {
+    font-family: 'IM Fell English', serif;
+    font-size: 20px; color: var(--gold); letter-spacing: 0.03em; line-height: 1.1;
+  }
+  .logo-text span { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .header-badge {
+    margin-left: auto; font-size: 11px; color: var(--gold-dim);
+    border: 1px solid var(--border); padding: 3px 10px;
+    border-radius: 20px; font-family: 'JetBrains Mono', monospace;
+  }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    overflow: hidden;
+    height: calc(100vh - 62px);
+  }
+
+  aside {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .aside-section { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .aside-section h2 {
+    font-family: 'IM Fell English', serif;
+    font-size: 13px; color: var(--gold);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .aside-section h2::before {
+    content: ''; display: inline-block;
+    width: 16px; height: 1px; background: var(--gold-dim);
+  }
+
+  /* Dropzone */
+  .dropzone {
+    border: 1.5px dashed var(--border); border-radius: var(--radius);
+    padding: 20px 16px; text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s; position: relative;
+  }
+  .dropzone:hover, .dropzone.drag-over { border-color: var(--gold-dim); background: #c8a84b08; }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .dropzone-icon { font-size: 24px; margin-bottom: 6px; opacity: 0.6; }
+  .dropzone p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .dropzone .types { margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--gold-dim); }
+
+  /* File list */
+  .file-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+
+  /* Jar group */
+  .jar-group { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .jar-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; background: #1a1814;
+    cursor: pointer; user-select: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .jar-header:hover { background: #201e18; }
+  .jar-icon { font-size: 13px; }
+  .jar-name { flex: 1; font-size: 12px; color: var(--gold); font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jar-count { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .jar-toggle { color: var(--muted); font-size: 10px; transition: transform 0.15s; }
+  .jar-toggle.open { transform: rotate(90deg); }
+  .jar-children { display: flex; flex-direction: column; }
+  .jar-children.collapsed { display: none; }
+
+  /* File items */
+  .file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; background: var(--panel);
+    border: 1px solid transparent;
+    cursor: pointer; transition: border-color 0.15s; position: relative;
+  }
+  .file-item:hover { border-color: var(--border); background: #1c1a16; }
+  .file-item.active { border-color: var(--gold) !important; background: #1f1c14; }
+  .jar-children .file-item { padding-left: 22px; border-radius: 0; border-left: none; border-right: none; border-top: none; }
+  .jar-children .file-item:last-child { border-bottom: none; }
+  .standalone-item { border-radius: var(--radius); border: 1px solid var(--border); }
+  .standalone-item:hover { border-color: var(--gold-dim); }
+
+  .file-ext {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600;
+    padding: 2px 5px; border-radius: 3px; text-transform: uppercase; flex-shrink: 0;
+  }
+  .ext-snbt { background: #3a2a6a; color: #a080e0; }
+  .ext-json { background: #1a3a2a; color: #50c878; }
+  .ext-lang { background: #3a2010; color: #e07040; }
+
+  .file-name { flex: 1; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-status { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-pending  { background: var(--muted); }
+  .status-loading  { background: var(--amber); animation: pulse 1s infinite; }
+  .status-done     { background: var(--green); }
+  .status-error    { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .file-remove {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 3px; display: none;
+  }
+  .file-item:hover .file-remove, .jar-header:hover .jar-remove { display: block; }
+  .file-remove:hover { color: var(--red); }
+  .jar-remove {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 3px; display: none;
+  }
+  .jar-remove:hover { color: var(--red); }
+
+  /* Config */
+  .config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .config-row label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .config-row select,
+  .config-row input[type="text"],
+  .config-row input[type="password"] {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); padding: 7px 10px; font-size: 13px;
+    font-family: 'Inter', sans-serif; width: 100%; outline: none; transition: border-color 0.15s;
+  }
+  .config-row select:focus, .config-row input:focus { border-color: var(--gold-dim); }
+  .api-key-hint { font-size: 10px; color: var(--gold-dim); margin-top: 3px; }
+  .api-key-hint a { color: var(--gold-dim); }
+
+  .btn-primary {
+    width: 100%; padding: 10px;
+    background: linear-gradient(135deg, #b89440, #c8a84b);
+    color: #0e0d0b; border: none; border-radius: var(--radius);
+    font-family: 'IM Fell English', serif; font-size: 15px;
+    cursor: pointer; transition: opacity 0.15s, transform 0.1s; letter-spacing: 0.04em;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Editor */
+  .editor-panel { display: flex; flex-direction: column; overflow: hidden; }
+  .editor-toolbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .toolbar-filename { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--gold); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolbar-filename span { color: var(--muted); }
+
+  .btn-tool {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 12px; border-radius: var(--radius); font-size: 12px;
+    cursor: pointer; transition: border-color 0.15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-tool:hover { border-color: var(--gold-dim); color: var(--gold); }
+  .btn-tool:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-tool.gold { border-color: var(--gold-dim); color: var(--gold); }
+  .btn-tool.gold:hover { background: #c8a84b15; }
+
+  .editor-split { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; min-height: 0; }
+  .editor-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  .editor-pane:last-child { border-right: none; }
+  .pane-header {
+    padding: 7px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .pane-header .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .pane-header .dot.gold { background: var(--gold); }
+  textarea {
+    flex: 1; background: var(--bg); color: var(--text);
+    border: none; outline: none; resize: none; padding: 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.65; width: 100%;
+  }
+
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px; color: var(--muted); text-align: center; padding: 40px;
+  }
+  .empty-state .rune { font-family: 'IM Fell English', serif; font-size: 48px; color: var(--border); line-height: 1; }
+  .empty-state p { font-size: 13px; line-height: 1.6; }
+
+  .progress-bar-wrap { height: 2px; background: var(--border); flex-shrink: 0; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); transition: width 0.3s; width: 0%; }
+
+  .log-panel {
+    border-top: 1px solid var(--border); background: var(--surface);
+    padding: 6px 16px; max-height: 72px; overflow-y: auto; flex-shrink: 0;
+  }
+  .log-line { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.7; color: var(--muted); }
+  .log-line.ok   { color: var(--green); }
+  .log-line.err  { color: var(--red); }
+  .log-line.info { color: var(--amber); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .empty-filelist { padding: 8px; color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-rune">✦</div>
+  <div class="logo-text">
+    <h1>ModTranslate</h1>
+    <span>Traductor automático de mods · Gemini Flash</span>
+  </div>
+  <div class="header-badge">v2.0 · JAR</div>
+</header>
+
+<main>
+  <aside>
+    <div class="aside-section">
+      <h2>Archivos</h2>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" multiple accept=".snbt,.json,.lang,.jar">
+        <div class="dropzone-icon">📂</div>
+        <p>Arrastrá o hacé clic para cargar</p>
+        <div class="types">.jar · .snbt · .json · .lang</div>
+      </div>
+    </div>
+
+    <div class="file-list" id="fileList">
+      <div class="empty-filelist">Ningún archivo cargado</div>
+    </div>
+
+    <div class="aside-section" style="border-top:1px solid var(--border);">
+      <h2>Configuración</h2>
+
+      <div class="config-row">
+        <label>API Key de Gemini</label>
+        <input type="password" id="apiKey" placeholder="AIza...">
+        <div class="api-key-hint">Gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+      </div>
+
+      <div class="config-row">
+        <label>Idioma destino</label>
+        <select id="targetLang">
+          <option value="es-AR">Español (Argentina) — informal</option>
+          <option value="es-ES">Español (España)</option>
+          <option value="es-MX">Español (México)</option>
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </div>
+
+      <div class="config-row">
+        <label>Contexto del mod (opcional)</label>
+        <input type="text" id="modContext" placeholder="ej: Botania, mod de magia floral">
+      </div>
+
+      <button class="btn-primary" id="translateBtn" disabled>✦ Traducir todo</button>
+    </div>
+  </aside>
+
+  <div class="editor-panel">
+    <div class="editor-toolbar">
+      <div class="toolbar-filename" id="toolbarFilename">
+        <span>Seleccioná un archivo para ver su contenido</span>
+      </div>
+      <button class="btn-tool" id="downloadBtn" disabled onclick="downloadCurrent()">⬇ Descargar</button>
+      <button class="btn-tool gold" id="downloadAllBtn" disabled onclick="downloadAll()">⬇ Descargar todo</button>
+    </div>
+
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+
+    <div class="editor-split">
+      <div class="empty-state" id="emptyState" style="grid-column:1/-1;">
+        <div class="rune">⟁</div>
+        <p>Cargá archivos y hacé clic en <strong style="color:var(--gold)">Traducir todo</strong><br>para comenzar la traducción automática.</p>
+        <p style="font-size:11px;color:var(--border);margin-top:8px;">Soporta .jar (extrae automáticamente), .snbt, .json de Patchouli y .lang</p>
+      </div>
+      <div class="editor-pane" id="sourcePane" style="display:none;">
+        <div class="pane-header"><div class="dot"></div> Original</div>
+        <textarea id="sourceArea" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="editor-pane" id="targetPane" style="display:none;">
+        <div class="pane-header"><div class="dot gold"></div> Traducción</div>
+        <textarea id="targetArea" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <div class="log-panel" id="logPanel"></div>
+  </div>
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+// file: { id, name, displayName, ext, original, translated, status, jarId? }
+// jar:  { id, name, zipObj, files: [fileIds], collapsed }
+const state = {
+  files: [],
+  jars: [],
+  activeFileId: null,
+  nextId: 1,
+};
+
+function uid() { return state.nextId++; }
+
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const fileInput       = document.getElementById('fileInput');
+const dropzone        = document.getElementById('dropzone');
+const fileListEl      = document.getElementById('fileList');
+const translateBtn    = document.getElementById('translateBtn');
+const downloadBtn     = document.getElementById('downloadBtn');
+const downloadAllBtn  = document.getElementById('downloadAllBtn');
+const sourceArea      = document.getElementById('sourceArea');
+const targetArea      = document.getElementById('targetArea');
+const progressBar     = document.getElementById('progressBar');
+const logPanel        = document.getElementById('logPanel');
+const emptyState      = document.getElementById('emptyState');
+const sourcePaneEl    = document.getElementById('sourcePane');
+const targetPaneEl    = document.getElementById('targetPane');
+const toolbarFilename = document.getElementById('toolbarFilename');
+
+// ─── Drop / Input ─────────────────────────────────────────────────────────────
+fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  handleFiles([...e.dataTransfer.files]);
+});
+
+function getExt(name) {
+  const e = name.split('.').pop().toLowerCase();
+  if (e === 'snbt') return 'snbt';
+  if (e === 'lang') return 'lang';
+  if (e === 'jar')  return 'jar';
+  return 'json';
+}
+
+// Rutas dentro de un JAR que nos interesan
+function isTranslatable(path) {
+  if (path.endsWith('/')) return false; // carpeta
+  const p = path.toLowerCase();
+  // lang files
+  if (p.includes('/lang/') && (p.endsWith('.json') || p.endsWith('.lang'))) return true;
+  // snbt (quests)
+  if (p.endsWith('.snbt')) return true;
+  // patchouli books
+  if (p.includes('patchouli') && p.endsWith('.json')) return true;
+  return false;
+}
+
+async function handleFiles(files) {
+  for (const f of files) {
+    const ext = getExt(f.name);
+    if (ext === 'jar') {
+      await loadJar(f);
+    } else {
+      await loadSingleFile(f);
+    }
+  }
+  renderFileList();
+  updateButtons();
+}
+
+function loadSingleFile(f) {
+  return new Promise(resolve => {
+    if (state.files.find(x => x.name === f.name && !x.jarId)) { resolve(); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      state.files.push({
+        id: uid(), name: f.name, displayName: f.name,
+        ext: getExt(f.name), original: e.target.result,
+        translated: '', status: 'pending', jarId: null,
+      });
+      resolve();
+    };
+    reader.readAsText(f, 'UTF-8');
+  });
+}
+
+async function loadJar(f) {
+  log(`Abriendo ${f.name}…`, 'info');
+  try {
+    const buf = await f.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    const jarId = uid();
+    const fileIds = [];
+
+    const paths = Object.keys(zip.files).filter(isTranslatable);
+    if (paths.length === 0) {
+      log(`⚠ ${f.name}: no se encontraron archivos traducibles.`, 'err');
+      return;
+    }
+
+    for (const path of paths) {
+      const content = await zip.files[path].async('string');
+      const ext = getExt(path);
+      const fid = uid();
+      state.files.push({
+        id: fid, name: path, displayName: path.split('/').pop(),
+        ext, original: content, translated: '', status: 'pending', jarId,
+      });
+      fileIds.push(fid);
+    }
+
+    state.jars.push({
+      id: jarId, name: f.name, zipObj: zip, fileIds, collapsed: false,
+    });
+
+    log(`✓ ${f.name}: ${fileIds.length} archivo(s) encontrado(s).`, 'ok');
+  } catch (err) {
+    log(`✗ Error al abrir ${f.name}: ${err.message}`, 'err');
+  }
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderFileList() {
+  if (state.files.length === 0 && state.jars.length === 0) {
+    fileListEl.innerHTML = '<div class="empty-filelist">Ningún archivo cargado</div>';
+    return;
+  }
+
+  let html = '';
+
+  // Jars agrupados
+  for (const jar of state.jars) {
+    const files = jar.fileIds.map(id => state.files.find(f => f.id === id)).filter(Boolean);
+    const doneCount = files.filter(f => f.status === 'done').length;
+    html += `
+      <div class="jar-group" id="jar-${jar.id}">
+        <div class="jar-header" onclick="toggleJar(${jar.id})">
+          <span class="jar-icon">📦</span>
+          <span class="jar-name">${jar.name}</span>
+          <span class="jar-count">${doneCount}/${files.length}</span>
+          <button class="jar-remove" onclick="removeJar(event,${jar.id})">✕</button>
+          <span class="jar-toggle ${jar.collapsed ? '' : 'open'}">▶</span>
+        </div>
+        <div class="jar-children ${jar.collapsed ? 'collapsed' : ''}">
+          ${files.map(f => fileItemHtml(f)).join('')}
+        </div>
+      </div>`;
+  }
+
+  // Archivos sueltos
+  for (const f of state.files.filter(f => !f.jarId)) {
+    html += `<div class="standalone-item">${fileItemHtml(f)}</div>`;
+  }
+
+  fileListEl.innerHTML = html;
+}
+
+function fileItemHtml(f) {
+  const active = state.activeFileId === f.id ? 'active' : '';
+  return `
+    <div class="file-item ${active}" onclick="selectFile(${f.id})">
+      <span class="file-ext ext-${f.ext}">${f.ext}</span>
+      <span class="file-name" title="${f.name}">${f.displayName}</span>
+      <span class="file-status status-${f.status}"></span>
+      ${!f.jarId ? `<button class="file-remove" onclick="removeFile(event,${f.id})">✕</button>` : ''}
+    </div>`;
+}
+
+function toggleJar(jarId) {
+  const jar = state.jars.find(j => j.id === jarId);
+  if (jar) { jar.collapsed = !jar.collapsed; renderFileList(); }
+}
+
+function removeJar(e, jarId) {
+  e.stopPropagation();
+  const jar = state.jars.find(j => j.id === jarId);
+  if (!jar) return;
+  // Si el archivo activo era de este jar, limpiar
+  if (state.activeFileId && jar.fileIds.includes(state.activeFileId)) {
+    state.activeFileId = null; clearEditor();
+  }
+  state.files = state.files.filter(f => !jar.fileIds.includes(f.id));
+  state.jars = state.jars.filter(j => j.id !== jarId);
+  renderFileList(); updateButtons();
+}
+
+function removeFile(e, fid) {
+  e.stopPropagation();
+  if (state.activeFileId === fid) { state.activeFileId = null; clearEditor(); }
+  state.files = state.files.filter(f => f.id !== fid);
+  renderFileList(); updateButtons();
+}
+
+function selectFile(fid) {
+  saveCurrentEdits();
+  state.activeFileId = fid;
+  const f = state.files.find(f => f.id === fid);
+  if (!f) return;
+  showEditor(f);
+  renderFileList();
+  toolbarFilename.innerHTML = `<span>Archivo:</span> ${f.name}`;
+  downloadBtn.disabled = !f.translated;
+}
+
+function saveCurrentEdits() {
+  if (state.activeFileId) {
+    const f = state.files.find(f => f.id === state.activeFileId);
+    if (f) f.translated = targetArea.value;
+  }
+}
+
+function showEditor(f) {
+  emptyState.style.display = 'none';
+  sourcePaneEl.style.display = 'flex';
+  targetPaneEl.style.display = 'flex';
+  sourceArea.value = f.original;
+  targetArea.value = f.translated;
+}
+
+function clearEditor() {
+  emptyState.style.display = 'flex';
+  sourcePaneEl.style.display = 'none';
+  targetPaneEl.style.display = 'none';
+  toolbarFilename.innerHTML = '<span>Seleccioná un archivo para ver su contenido</span>';
+  downloadBtn.disabled = true;
+}
+
+function updateButtons() {
+  const hasFiles = state.files.length > 0;
+  translateBtn.disabled = !hasFiles;
+  downloadAllBtn.disabled = !state.files.some(f => f.translated);
+}
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+const LANG_LABELS = {
+  'es-AR': 'español argentino informal (tuteo, vocabulario rioplatense)',
+  'es-ES': 'español de España',
+  'es-MX': 'español mexicano informal',
+  'pt-BR': 'português brasileiro informal',
+  'fr':    'français',
+  'de':    'Deutsch',
+};
+
+function buildPrompt(file, lang, modContext) {
+  const langLabel = LANG_LABELS[lang] || lang;
+  const ctx = modContext ? `El mod se llama "${modContext}".` : '';
+  const typeHint = {
+    snbt: `Archivo de quests SNBT. Traducí SOLO los valores de texto legible (title, subtitle, description, tasks). NO toques: IDs entre corchetes [item:namespace], comandos, claves técnicas, números.`,
+    json: `Archivo JSON de Patchouli o lang. Si es Patchouli: traducí "name", "description", "text", "title", "header". Si es lang JSON: traducí solo los valores, no las claves. NO toques: IDs, comandos, placeholders (%s, %d).`,
+    lang: `Archivo lang (clave=valor). Traducí SOLO los valores (después del =). NO toques las claves ni los placeholders (%s, %d, %1$s).`,
+  }[file.ext] || 'Traducí solo el texto visible al usuario.';
+
+  return `Sos un traductor experto en mods de Minecraft. Traducí el siguiente archivo al ${langLabel}.
+${ctx}
+${typeHint}
+
+Reglas:
+- Mantené el formato exacto (estructura, sangría, caracteres especiales).
+- Conservá el formato de color §a, §b, etc.
+- Devolvé ÚNICAMENTE el archivo traducido, sin explicaciones ni comentarios.
+
+Archivo:
+\`\`\`
+${file.original}
+\`\`\``;
+}
+
+// ─── Log ──────────────────────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const div = document.createElement('div');
+  div.className = `log-line ${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logPanel.appendChild(div);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+// ─── Translate ────────────────────────────────────────────────────────────────
+translateBtn.addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { log('⚠ Ingresá tu API key de Gemini.', 'err'); return; }
+
+  const lang       = document.getElementById('targetLang').value;
+  const modContext = document.getElementById('modContext').value.trim();
+  const pending    = state.files.filter(f => f.status === 'pending' || f.status === 'error');
+  if (!pending.length) { log('No hay archivos pendientes.', 'info'); return; }
+
+  translateBtn.disabled = true;
+  progressBar.style.width = '0%';
+  let done = 0; const total = pending.length;
+
+  for (const file of pending) {
+    file.status = 'loading';
+    renderFileList();
+    const af = state.files.find(f => f.id === state.activeFileId);
+    if (af && af.id === file.id) showEditor(file);
+    log(`Traduciendo ${file.displayName}…`, 'info');
+
+    try {
+      const prompt = buildPrompt(file, lang, modContext);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      let translated = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      translated = translated.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '').trim();
+      if (!translated) throw new Error('Respuesta vacía de la API');
+
+      file.translated = translated;
+      file.status = 'done';
+      log(`✓ ${file.displayName}`, 'ok');
+
+    } catch (err) {
+      file.status = 'error';
+      log(`✗ ${file.displayName}: ${err.message}`, 'err');
+    }
+
+    done++;
+    progressBar.style.width = `${(done / total) * 100}%`;
+    renderFileList();
+    const activeF = state.files.find(f => f.id === state.activeFileId);
+    if (activeF && activeF.id === file.id) {
+      showEditor(file); downloadBtn.disabled = !file.translated;
+    }
+    updateButtons();
+    if (done < total) await sleep(4200); // 15 RPM free tier
+  }
+
+  translateBtn.disabled = state.files.length === 0;
+  log(`Listo: ${done}/${total} archivos procesados.`, 'ok');
+});
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+function downloadCurrent() {
+  saveCurrentEdits();
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (!f || !f.translated) return;
+  triggerDownload(f.displayName, f.translated);
+}
+
+async function downloadAll() {
+  saveCurrentEdits();
+
+  // Agrupar por jar
+  const jarsDone = state.jars.filter(j => j.fileIds.some(id => {
+    const f = state.files.find(f => f.id === id);
+    return f && f.translated;
+  }));
+
+  // Descargar jars modificados
+  for (const jar of jarsDone) {
+    await downloadJar(jar);
+    await sleep(300);
+  }
+
+  // Descargar archivos sueltos
+  for (const f of state.files.filter(f => !f.jarId && f.translated)) {
+    triggerDownload(f.displayName, f.translated);
+    await sleep(150);
+  }
+}
+
+async function downloadJar(jar) {
+  log(`Empaquetando ${jar.name}…`, 'info');
+  try {
+    const zip = jar.zipObj;
+    // Sobreescribir los archivos traducidos dentro del zip
+    for (const fid of jar.fileIds) {
+      const f = state.files.find(f => f.id === fid);
+      if (f && f.translated) {
+        zip.file(f.name, f.translated);
+      }
+    }
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = jar.name; a.click();
+    URL.revokeObjectURL(url);
+    log(`✓ ${jar.name} descargado.`, 'ok');
+  } catch (err) {
+    log(`✗ Error al empaquetar ${jar.name}: ${err.message}`, 'err');
+  }
+}
+
+function triggerDownload(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Guardar ediciones al escribir
+targetArea.addEventListener('input', () => {
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (f) {
+    f.translated = targetArea.value;
+    downloadBtn.disabled = !targetArea.value;
+    updateButtons();
+  }
+});
+</script>
+</body>
+</html>
