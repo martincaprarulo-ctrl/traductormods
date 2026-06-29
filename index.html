@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ModTranslate</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Tokens ─────────────────────────────────────────────────────────────────── */
+:root {
+  /* Minecraft palette */
+  --mc-void:    #0D0D0D;
+  --mc-stone:   #1A1A1A;
+  --mc-cobble:  #242424;
+  --mc-plank:   #2E2E2E;
+  --mc-border:  #3A3A3A;
+  --mc-mid:     #555;
+  --mc-muted:   #888;
+  --mc-fog:     #AAAAAA;
+  --mc-snow:    #F0EDE8;
+  --mc-grass:   #5A8A2C;
+  --mc-grass2:  #3D6B1A;
+  --mc-dirt:    #6B4C31;
+  --mc-gold:    #FFAA00;
+  --mc-red:     #C0392B;
+  --mc-water:   #2E5FA3;
+  --mc-sky:     #87CEEB;
+
+  /* Semantic */
+  --bg:      var(--mc-void);
+  --surface: var(--mc-stone);
+  --panel:   var(--mc-cobble);
+  --border:  var(--mc-border);
+  --text:    var(--mc-snow);
+  --muted:   var(--mc-muted);
+  --accent:  var(--mc-grass);
+  --accent2: var(--mc-grass2);
+  --warn:    var(--mc-gold);
+  --danger:  var(--mc-red);
+  --info:    var(--mc-water);
+
+  /* Minecraft button bevel effect */
+  --bevel-light: rgba(255,255,255,0.18);
+  --bevel-dark:  rgba(0,0,0,0.55);
+
+  --radius: 0px; /* Minecraft = sin border-radius */
+  --pixel: 2px;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  image-rendering: pixelated;
+}
+
+/* ── Pixel font util ─────────────────────────────────────────────────────────── */
+.pixel { font-family: 'Press Start 2P', monospace; }
+
+/* ── Minecraft block button mixin ────────────────────────────────────────────── */
+/* Top+left lighter, bottom+right darker — the classic MC bevel */
+.mc-block {
+  border-top:    var(--pixel) solid var(--bevel-light);
+  border-left:   var(--pixel) solid var(--bevel-light);
+  border-bottom: var(--pixel) solid var(--bevel-dark);
+  border-right:  var(--pixel) solid var(--bevel-dark);
+  background: var(--panel);
+}
+.mc-block:active { 
+  border-top:    var(--pixel) solid var(--bevel-dark);
+  border-left:   var(--pixel) solid var(--bevel-dark);
+  border-bottom: var(--pixel) solid var(--bevel-light);
+  border-right:  var(--pixel) solid var(--bevel-light);
+  transform: translate(1px, 1px);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+header {
+  background: var(--mc-cobble);
+  border-bottom: var(--pixel) solid #000;
+  box-shadow: 0 var(--pixel) 0 var(--bevel-light) inset;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Grass block icon — pure CSS */
+
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.logo-name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: var(--text);
+  letter-spacing: .02em;
+  text-shadow: 2px 2px 0 rgba(0,0,0,.8);
+  line-height: 1;
+}
+.logo-sub {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+
+/* Nav tabs */
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 20px;
+  align-self: stretch;
+  align-items: flex-end;
+  padding-bottom: 0;
+}
+.nav-tab {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--muted);
+  background: var(--mc-stone);
+  border: var(--pixel) solid #000;
+  border-bottom: none;
+  padding: 7px 14px 9px;
+  cursor: pointer;
+  transition: color .1s, background .1s;
+  position: relative;
+  bottom: 0;
+  letter-spacing: .04em;
+}
+.nav-tab:hover { color: var(--text); background: var(--mc-plank); }
+.nav-tab.active {
+  color: var(--text);
+  background: var(--mc-cobble);
+  border-color: #000;
+  z-index: 1;
+}
+
+.header-version {
+  margin-left: auto;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--mc-mid);
+  letter-spacing: .05em;
+}
+
+/* ── App shell ───────────────────────────────────────────────────────────────── */
+#app { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.view { display: none; flex: 1; overflow: hidden; }
+.view.active { display: flex; }
+#view-translator { flex-direction: row; }
+#view-tutorial { flex-direction: column; overflow-y: auto; background: var(--bg); }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────────── */
+aside {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: var(--pixel) solid #000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.side-block {
+  padding: 12px 13px;
+  border-bottom: var(--pixel) solid #000;
+  flex-shrink: 0;
+}
+
+.side-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--accent);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.side-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Dropzone ────────────────────────────────────────────────────────────────── */
+.dropzone {
+  border: var(--pixel) dashed var(--border);
+  background: var(--panel);
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  position: relative;
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--accent);
+  background: #5A8A2C0F;
+}
+.dropzone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.drop-icon {
+  font-size: 22px;
+  margin-bottom: 5px;
+  display: block;
+}
+.drop-text {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.drop-text strong { color: var(--accent); }
+.drop-types {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--mc-mid);
+  margin-top: 5px;
+}
+
+/* Load buttons grid */
+.load-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 7px;
+}
+.btn-load {
+  padding: 7px 4px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .1s;
+  text-align: center;
+  line-height: 1.5;
+}
+.btn-load:hover { color: var(--text); }
+.btn-load .icon { font-size: 16px; display: block; margin-bottom: 3px; }
+input[type="file"].hidden { display: none; }
+
+/* ── File list ───────────────────────────────────────────────────────────────── */
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+}
+
+.group-box {
+  border: var(--pixel) solid #000;
+  background: var(--panel);
+  overflow: hidden;
+}
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--mc-plank);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(0,0,0,.4);
+}
+.group-header:hover { background: #383838; }
+.group-icon { font-size: 13px; flex-shrink: 0; }
+.group-name {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mc-fog);
+}
+.group-name.grass { color: var(--accent); }
+.group-name.gold  { color: var(--warn); }
+.group-count { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); flex-shrink: 0; }
+.group-remove {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 11px; padding: 1px 4px; display: none; flex-shrink: 0;
+}
+.group-header:hover .group-remove { display: block; }
+.group-remove:hover { color: var(--danger); }
+.group-toggle { color: var(--muted); font-size: 9px; transition: transform .12s; flex-shrink: 0; }
+.group-toggle.open { transform: rotate(90deg); }
+.group-children { display: flex; flex-direction: column; }
+.group-children.collapsed { display: none; }
+
+.subgroup-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px 5px 20px;
+  background: #1E1E1E;
+  cursor: pointer; user-select: none;
+  border-top: 1px solid rgba(0,0,0,.3);
+}
+.subgroup-header:hover { background: #252525; }
+.subgroup-toggle { color: var(--muted); font-size: 9px; transition: transform .12s; flex-shrink: 0; }
+.subgroup-toggle.open { transform: rotate(90deg); }
+.subgroup-children { display: flex; flex-direction: column; }
+.subgroup-children.collapsed { display: none; }
+
+.file-item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 8px;
+  background: var(--panel);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background .1s, border-color .1s;
+}
+.file-item:hover { background: #2A2A2A; border-left-color: var(--mc-mid); }
+.file-item.active { background: #1A2A0F; border-left-color: var(--accent); }
+.group-children > .file-item, .subgroup-children > .file-item {
+  border-top: 1px solid rgba(0,0,0,.25);
+}
+.standalone-item {
+  border: var(--pixel) solid #000;
+  background: var(--panel);
+}
+.standalone-item .file-item { border-left: 3px solid transparent; }
+.standalone-item .file-item:hover { border-left-color: var(--mc-mid); }
+.standalone-item .file-item.active { border-left-color: var(--accent); background: #1A2A0F; }
+
+/* File ext badges — pixelated */
+.file-ext {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  letter-spacing: .02em;
+}
+.ext-snbt { background: #3D1A6E; color: #BF9FFF; }
+.ext-json { background: #1A3D1A; color: #7FD97F; }
+.ext-lang { background: #3D2200; color: #FFAA55; }
+
+.file-name {
+  flex: 1; font-size: 11px; color: var(--mc-fog);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-status { width: 7px; height: 7px; flex-shrink: 0; }
+.status-pending  { background: var(--muted); }
+.status-loading  { background: var(--warn); animation: blink 1s step-end infinite; }
+.status-done     { background: var(--accent); }
+.status-error    { background: var(--danger); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} } /* pixel blink, no ease */
+
+.file-remove {
+  position: absolute; right: 6px; background: none; border: none;
+  color: var(--muted); cursor: pointer; font-size: 11px; display: none;
+}
+.file-item:hover .file-remove { display: block; }
+.file-item:hover { position: relative; }
+.file-remove:hover { color: var(--danger); }
+
+/* ── Config panel ────────────────────────────────────────────────────────────── */
+.config-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.config-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.config-row select,
+.config-row input[type="text"],
+.config-row input[type="password"] {
+  background: var(--mc-void);
+  border-top: var(--pixel) solid var(--bevel-dark);
+  border-left: var(--pixel) solid var(--bevel-dark);
+  border-bottom: var(--pixel) solid var(--bevel-light);
+  border-right: var(--pixel) solid var(--bevel-light);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+  outline: none;
+}
+.config-row select:focus,
+.config-row input:focus {
+  border-color: var(--accent);
+}
+.api-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.api-hint a { color: var(--accent); text-decoration: none; }
+.api-hint a:hover { text-decoration: underline; }
+
+.checkbox-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; cursor: pointer; }
+.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+.checkbox-row span { font-size: 11px; color: var(--mc-fog); }
+
+/* ── MC Buttons ──────────────────────────────────────────────────────────────── */
+.btn-row { display: grid; grid-template-columns: 1fr auto; gap: 5px; }
+
+.btn-mc {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  border: none;
+  position: relative;
+  text-shadow: 1px 1px 0 rgba(0,0,0,.6);
+  letter-spacing: .05em;
+  transition: filter .1s;
+  /* Bevel */
+  border-top:    2px solid var(--bevel-light);
+  border-left:   2px solid var(--bevel-light);
+  border-bottom: 2px solid var(--bevel-dark);
+  border-right:  2px solid var(--bevel-dark);
+}
+.btn-mc:active:not(:disabled) {
+  border-top:    2px solid var(--bevel-dark);
+  border-left:   2px solid var(--bevel-dark);
+  border-bottom: 2px solid var(--bevel-light);
+  border-right:  2px solid var(--bevel-light);
+  transform: translate(1px,1px);
+}
+.btn-mc:disabled { opacity: .4; cursor: not-allowed; }
+.btn-mc:hover:not(:disabled) { filter: brightness(1.15); }
+
+.btn-green { background: var(--accent); color: #0D1A06; }
+.btn-red   { background: var(--danger); color: #FFD0CC; display: none; }
+.btn-red.visible { display: block; }
+.btn-dark  { background: var(--mc-plank); color: var(--mc-fog); }
+
+/* ── Editor area ─────────────────────────────────────────────────────────────── */
+.editor-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.editor-toolbar {
+  background: var(--mc-cobble);
+  border-bottom: var(--pixel) solid #000;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.toolbar-path {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolbar-path span { color: var(--muted); }
+
+.btn-sm {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  letter-spacing: .04em;
+  text-shadow: 1px 1px 0 rgba(0,0,0,.5);
+  border-top:    1px solid var(--bevel-light);
+  border-left:   1px solid var(--bevel-light);
+  border-bottom: 1px solid var(--bevel-dark);
+  border-right:  1px solid var(--bevel-dark);
+  background: var(--mc-plank);
+  color: var(--mc-fog);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-sm:hover:not(:disabled) { filter: brightness(1.2); }
+.btn-sm:active:not(:disabled) { transform: translate(1px,1px); }
+.btn-sm:disabled { opacity: .4; cursor: not-allowed; }
+.btn-sm.green { background: var(--accent2); color: #D0FFD0; }
+
+/* Progress bar */
+.progress-panel {
+  background: var(--mc-stone);
+  border-bottom: var(--pixel) solid #000;
+  padding: 8px 14px;
+  flex-shrink: 0;
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+}
+.progress-panel.visible { display: flex; }
+.progress-top { display: flex; align-items: center; justify-content: space-between; }
+.progress-file {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.progress-file .cur { color: var(--accent); }
+.progress-pct {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+/* Pixel progress bar */
+.progress-track {
+  height: 10px;
+  background: var(--mc-void);
+  border-top: 1px solid var(--bevel-dark);
+  border-left: 1px solid var(--bevel-dark);
+  border-bottom: 1px solid var(--bevel-light);
+  border-right: 1px solid var(--bevel-light);
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+.progress-fill {
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0px, var(--accent) 8px,
+    var(--accent2) 8px, var(--accent2) 16px
+  );
+  transition: width .3s steps(20);
+  width: 0%;
+}
+.progress-bottom { display: flex; justify-content: space-between; }
+.progress-sub { font-size: 10px; color: var(--muted); }
+.progress-counter { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+
+/* Editor split */
+.editor-split { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; min-height: 0; }
+.editor-pane { display: flex; flex-direction: column; overflow: hidden; border-right: var(--pixel) solid #000; }
+.editor-pane:last-child { border-right: none; }
+.pane-header {
+  padding: 6px 12px;
+  background: var(--mc-plank);
+  border-bottom: var(--pixel) solid #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  letter-spacing: .05em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.pane-dot { width: 6px; height: 6px; background: var(--muted); flex-shrink: 0; }
+.pane-dot.green { background: var(--accent); }
+
+textarea {
+  flex: 1;
+  background: #111;
+  color: #D4D4D4;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  width: 100%;
+}
+textarea[readonly] { color: var(--muted); }
+
+/* Empty state */
+.empty-state {
+  flex: 1; grid-column: 1/-1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; text-align: center; padding: 40px;
+  background: #111;
+}
+.empty-icon { font-size: 42px; opacity: .3; }
+.empty-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: var(--mc-mid);
+  line-height: 1.6;
+}
+.empty-sub { font-size: 12px; color: var(--mc-mid); line-height: 1.6; }
+.empty-sub strong { color: var(--accent); }
+
+/* Log */
+.log-panel {
+  border-top: var(--pixel) solid #000;
+  background: var(--mc-void);
+  padding: 5px 12px;
+  max-height: 62px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.log-line { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.7; color: var(--muted); }
+.log-line.ok   { color: var(--accent); }
+.log-line.err  { color: var(--danger); }
+.log-line.info { color: var(--warn); }
+
+/* ── Tutorial view ───────────────────────────────────────────────────────────── */
+#view-tutorial {
+  padding: 28px 36px;
+  gap: 24px;
+  background: var(--bg);
+}
+
+.tut-hero {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tut-hero h2 {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  color: var(--text);
+  text-shadow: 2px 2px 0 rgba(0,0,0,.8);
+  line-height: 1.5;
+}
+.tut-hero p { color: var(--muted); font-size: 12px; max-width: 580px; line-height: 1.6; }
+
+.section-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--accent);
+  letter-spacing: .08em;
+  padding-bottom: 8px;
+  border-bottom: var(--pixel) solid var(--border);
+}
+
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.launcher-card {
+  background: var(--surface);
+  border: var(--pixel) solid #000;
+  border-top: var(--pixel) solid var(--bevel-light);
+  border-left: var(--pixel) solid var(--bevel-light);
+  overflow: hidden;
+}
+.card-head {
+  padding: 11px 14px;
+  border-bottom: var(--pixel) solid #000;
+  background: var(--mc-plank);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-icon { font-size: 22px; flex-shrink: 0; line-height: 1; }
+.card-title { display: flex; flex-direction: column; gap: 2px; }
+.card-title strong { font-size: 13px; color: var(--text); }
+.card-title span { font-size: 10px; color: var(--muted); }
+.card-body { padding: 13px 14px; display: flex; flex-direction: column; gap: 9px; }
+
+.step { display: flex; gap: 10px; align-items: flex-start; }
+.step-num {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  width: 20px; height: 20px;
+  background: var(--accent2);
+  color: #D0FFD0;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.step-body { flex: 1; }
+.step-body p { font-size: 12px; color: var(--mc-fog); line-height: 1.55; }
+.step-body p strong { color: var(--text); }
+
+.path-box {
+  margin-top: 5px;
+  background: var(--mc-void);
+  border-top: 1px solid var(--bevel-dark);
+  border-left: 1px solid var(--bevel-dark);
+  border-bottom: 1px solid var(--bevel-light);
+  border-right: 1px solid var(--bevel-light);
+  padding: 6px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--warn);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.path-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+  background: var(--mc-plank);
+  border-top: 1px solid var(--bevel-light);
+  border-left: 1px solid var(--bevel-light);
+  border-bottom: 1px solid var(--bevel-dark);
+  border-right: 1px solid var(--bevel-dark);
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.copy-btn:hover { color: var(--text); filter: brightness(1.2); }
+.copy-btn:active { transform: translate(1px,1px); }
+
+.tip-box {
+  background: #0D1A06;
+  border-left: 3px solid var(--accent);
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.tip-box strong { color: var(--accent); }
+
+.warn-box {
+  background: #1A1200;
+  border-left: 3px solid var(--warn);
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.warn-box strong { color: var(--warn); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--mc-void); }
+::-webkit-scrollbar-thumb { background: var(--mc-border); }
+::-webkit-scrollbar-thumb:hover { background: var(--mc-mid); }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<header>
+  <div class="logo">
+    <div class="grass-icon"></div>
+    <div class="logo-text">
+      <div class="logo-name">ModTranslate</div>
+      <div class="logo-sub">Traductor de mods · Gemini Flash</div>
+    </div>
+  </div>
+
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('translator')">Traductor</button>
+    <button class="nav-tab" onclick="switchTab('tutorial')">Tutoriales</button>
+  </nav>
+
+  <div class="header-version">v4.1</div>
+</header>
+
+<!-- ═══ APP ══════════════════════════════════════════════════════════════════ -->
+<div id="app">
+
+<!-- ─── TRANSLATOR VIEW ────────────────────────────────────────────────────── -->
+<div id="view-translator" class="view active">
+<main style="display:flex;flex:1;overflow:hidden;">
+
+  <!-- Sidebar -->
+  <aside>
+
+    <!-- Carga -->
+    <div class="side-block">
+      <div class="side-label">Cargar</div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" multiple accept=".snbt,.json,.lang,.jar,.zip,.mrpack">
+        <span class="drop-icon">📂</span>
+        <div class="drop-text">Arrastrá archivos o <strong>la carpeta entera</strong> de la instancia</div>
+        <div class="drop-types">.jar · .mrpack · .zip · .snbt · .json · .lang · carpetas</div>
+      </div>
+      <div class="load-btns">
+        <button class="btn-load mc-block" onclick="document.getElementById('folderInput').click()">
+          <span class="icon">📁</span>Carpeta instancia
+        </button>
+        <button class="btn-load mc-block" onclick="document.getElementById('mrpackInput').click()">
+          <img src="https://cdn.modrinth.com/modrinth-new.png" height="18" style="display:block;margin:0 auto 3px;image-rendering:pixelated;" onerror="this.outerHTML='<span style=\'display:block;font-size:16px;margin-bottom:3px;\'>🟩</span>'">Modrinth .mrpack
+        </button>
+        <button class="btn-load mc-block" onclick="document.getElementById('curseInput').click()">
+          <img src="https://www.curseforge.com/favicon.ico" height="18" style="display:block;margin:0 auto 3px;image-rendering:pixelated;" onerror="this.outerHTML='<span style=\'display:block;font-size:16px;margin-bottom:3px;\'>🔶</span>'">CurseForge .zip
+        </button>
+        <button class="btn-load mc-block" onclick="document.getElementById('jarInput').click()">
+          <span class="icon">📦</span>JARs sueltos
+        </button>
+      </div>
+      <input type="file" id="folderInput" class="hidden" webkitdirectory multiple>
+      <input type="file" id="mrpackInput" class="hidden" accept=".mrpack">
+      <input type="file" id="jarInput"    class="hidden" multiple accept=".jar">
+      <input type="file" id="curseInput"  class="hidden" accept=".zip">
+    </div>
+
+    <!-- Lista -->
+    <div class="file-list" id="fileList">
+      <div style="padding:10px;color:var(--muted);font-size:11px;text-align:center;">Ningún archivo cargado</div>
+    </div>
+
+    <!-- Config -->
+    <div class="side-block" style="border-top:var(--pixel) solid #000;">
+      <div class="side-label">Config</div>
+
+      <div class="config-row">
+        <div class="config-label">API Key de Gemini</div>
+        <input type="password" id="apiKey" placeholder="AIza...">
+        <div class="api-hint">Gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+      </div>
+
+      <div class="config-row">
+        <div class="config-label">Idioma destino</div>
+        <select id="targetLang">
+          <option value="es-AR">Español (Argentina) — voseo</option>
+          <option value="es-ES">Español (España)</option>
+          <option value="es-MX">Español (México)</option>
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </div>
+
+      <div class="config-row">
+        <div class="config-label">Contexto (opcional)</div>
+        <input type="text" id="modContext" placeholder="ej: Create X Magic, modpack de magia">
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="postProcess" checked>
+        <span>Corregir tildes incorrectas</span>
+      </label>
+
+      <div class="btn-row">
+        <button class="btn-mc btn-green" id="translateBtn" disabled>▶ Traducir</button>
+        <button class="btn-mc btn-red" id="cancelBtn">✕</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Editor -->
+  <div class="editor-panel">
+
+    <div class="editor-toolbar">
+      <div class="toolbar-path" id="toolbarFilename">
+        <span>Seleccioná un archivo</span>
+      </div>
+      <button class="btn-sm" id="downloadBtn" disabled onclick="downloadCurrent()">⬇ Guardar</button>
+      <button class="btn-sm green" id="downloadAllBtn" disabled onclick="downloadAll()">⬇ Todo</button>
+    </div>
+
+    <div class="progress-panel" id="progressPanel">
+      <div class="progress-top">
+        <div class="progress-file">Traduciendo: <span class="cur" id="progressFile">—</span></div>
+        <div class="progress-pct" id="progressPct">0%</div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-bottom">
+        <div class="progress-sub" id="progressSub">Iniciando…</div>
+        <div class="progress-counter" id="progressCounter">0 / 0</div>
+      </div>
+    </div>
+
+    <div class="editor-split" id="editorSplit">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🌍</div>
+        <div class="empty-title">Sin archivo seleccionado</div>
+        <div class="empty-sub">Cargá archivos y hacé clic en<br><strong>▶ Traducir</strong> para comenzar.</div>
+      </div>
+      <div class="editor-pane" id="sourcePane" style="display:none;">
+        <div class="pane-header"><div class="pane-dot"></div>Original</div>
+        <textarea id="sourceArea" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="editor-pane" id="targetPane" style="display:none;">
+        <div class="pane-header"><div class="pane-dot green"></div>Traducción</div>
+        <textarea id="targetArea" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <div class="log-panel" id="logPanel"></div>
+  </div>
+
+</main>
+</div><!-- /view-translator -->
+
+<!-- ─── TUTORIAL VIEW ─────────────────────────────────────────────────────── -->
+<div id="view-tutorial" class="view">
+
+  <div class="tut-hero">
+    <h2>Guía de Launchers</h2>
+    <p>Para traducir un modpack completo necesitás cargar la carpeta donde están instalados los mods. Acá encontrás cómo ubicarla en cada launcher.</p>
+  </div>
+
+  <div class="section-title">Launchers</div>
+  <div class="launcher-grid">
+
+    <!-- Modrinth -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">🟩</div>
+        <div class="card-title"><strong>Modrinth App</strong><span>Launcher oficial de Modrinth</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>Abrí Modrinth App y buscá tu instancia.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Clic derecho en la instancia → <strong>Open Folder</strong>. O navegá a:</p>
+          <div class="path-box"><span class="path-text">%APPDATA%\com.modrinth.theseus\profiles\[nombre]\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> a ModTranslate o usá el botón <strong>📁 Carpeta instancia</strong>.</p></div></div>
+        <div class="warn-box"><strong>⚠ Importante:</strong> el <strong>.mrpack</strong> que exporta Modrinth no incluye los JARs. Siempre usá la carpeta de la instancia instalada.</div>
+      </div>
+    </div>
+
+    <!-- Prism -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">🔷</div>
+        <div class="card-title"><strong>Prism Launcher</strong><span>Fork de MultiMC, muy popular</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>Seleccioná tu instancia en Prism.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Clic en <strong>Folder</strong> en la barra derecha, o clic derecho → <strong>Folder</strong>.</p>
+          <div class="path-box"><span class="path-text">%APPDATA%\PrismLauncher\instances\[instancia]\.minecraft\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+          <div class="path-box" style="margin-top:4px;"><span class="path-text">~/Library/Application Support/PrismLauncher/instances/[instancia]/.minecraft/mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> a ModTranslate.</p></div></div>
+      </div>
+    </div>
+
+    <!-- CurseForge -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">🔶</div>
+        <div class="card-title"><strong>CurseForge App</strong><span>Launcher de Overwolf/CurseForge</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>En CurseForge App andá a <strong>My Modpacks</strong>.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Hacé clic en los <strong>⋯</strong> → <strong>Open Folder</strong>.</p>
+          <div class="path-box"><span class="path-text">%USERPROFILE%\curseforge\minecraft\Instances\[modpack]\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> (y también <strong>config</strong> si tiene quests FTB) a ModTranslate.</p></div></div>
+        <div class="warn-box"><strong>⚠ Importante:</strong> el <strong>.zip</strong> de exportación de CurseForge tampoco incluye los JARs. Usá siempre la carpeta instalada.</div>
+      </div>
+    </div>
+
+    <!-- ATLauncher -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">⚡</div>
+        <div class="card-title"><strong>ATLauncher</strong><span>Alternativa clásica y liviana</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>Andá a la pestaña <strong>Instances</strong> en ATLauncher.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Hacé clic en <strong>Open Folder</strong> al lado de tu instancia.</p>
+          <div class="path-box"><span class="path-text">%APPDATA%\ATLauncher\instances\[instancia]\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> a ModTranslate.</p></div></div>
+      </div>
+    </div>
+
+    <!-- MultiMC -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">🧱</div>
+        <div class="card-title"><strong>MultiMC</strong><span>El launcher clásico de instancias</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>Seleccioná tu instancia en MultiMC.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Clic derecho → <strong>Minecraft Folder</strong>.</p>
+          <div class="path-box"><span class="path-text">MultiMC\instances\[instancia]\.minecraft\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> a ModTranslate.</p></div></div>
+      </div>
+    </div>
+
+    <!-- GDLauncher -->
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">🌀</div>
+        <div class="card-title"><strong>GDLauncher</strong><span>Interfaz moderna y simple</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><p>Clic derecho en tu instancia en GDLauncher.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">
+          <p>Seleccioná <strong>Open Folder</strong>.</p>
+          <div class="path-box"><span class="path-text">%APPDATA%\gdlauncher_next\instances\[instancia]\mods</span><button class="copy-btn" onclick="copyPath(this)">Copiar</button></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><p>Arrastrá la carpeta <strong>mods</strong> a ModTranslate.</p></div></div>
+      </div>
+    </div>
+
+  </div><!-- /launcher-grid -->
+
+  <div class="section-title">Formatos y consejos</div>
+  <div class="launcher-grid">
+
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">📂</div>
+        <div class="card-title"><strong>¿Qué archivos traduce ModTranslate?</strong><span>Dentro de cada .jar</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step">
+          <div class="step-num" style="background:#3D1A6E;color:#BF9FFF;">S</div>
+          <div class="step-body"><p><strong style="color:#BF9FFF;">.snbt</strong> — Quests de FTB Quests. Títulos, descripciones y textos de misiones.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:#1A3D1A;color:#7FD97F;">J</div>
+          <div class="step-body"><p><strong style="color:#7FD97F;">.json</strong> — Lang files (1.13+) y guías de Patchouli (libros de mods como el de Botania).</p></div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:#3D2200;color:#FFAA55;">L</div>
+          <div class="step-body"><p><strong style="color:#FFAA55;">.lang</strong> — Lang files clásicos de Minecraft 1.12 y anteriores.</p></div>
+        </div>
+        <div class="tip-box">El código del mod (.class) nunca se toca — los JARs traducidos son <strong>100% funcionales</strong>.</div>
+      </div>
+    </div>
+
+    <div class="launcher-card">
+      <div class="card-head">
+        <div class="card-icon">💡</div>
+        <div class="card-title"><strong>Consejos</strong><span>Para mejores resultados</span></div>
+      </div>
+      <div class="card-body">
+        <div class="step"><div class="step-num">✓</div><div class="step-body"><p>Completá el campo <strong>Contexto</strong> con el nombre del modpack para que Gemini entienda el tema.</p></div></div>
+        <div class="step"><div class="step-num">✓</div><div class="step-body"><p>Si un archivo da error por saturación de Gemini, volvé a hacer clic en <strong>▶ Traducir</strong> — solo reintenta los que fallaron.</p></div></div>
+        <div class="step"><div class="step-num">✓</div><div class="step-body"><p>Podés editar la traducción manualmente en el panel derecho antes de descargar.</p></div></div>
+        <div class="step"><div class="step-num">✓</div><div class="step-body"><p>Al descargar, los JARs se reempacan automáticamente. Solo reemplazás el JAR original en tu carpeta <strong>mods</strong>.</p></div></div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /view-tutorial -->
+</div><!-- /app -->
+
+<script>
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = { files: [], groups: [], activeFileId: null, nextId: 1, cancelRequested: false };
+function uid() { return state.nextId++; }
+
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const fileInput       = document.getElementById('fileInput');
+const folderInput     = document.getElementById('folderInput');
+const mrpackInput     = document.getElementById('mrpackInput');
+const jarInput        = document.getElementById('jarInput');
+const curseInput      = document.getElementById('curseInput');
+const dropzone        = document.getElementById('dropzone');
+const fileListEl      = document.getElementById('fileList');
+const translateBtn    = document.getElementById('translateBtn');
+const cancelBtn       = document.getElementById('cancelBtn');
+const downloadBtn     = document.getElementById('downloadBtn');
+const downloadAllBtn  = document.getElementById('downloadAllBtn');
+const sourceArea      = document.getElementById('sourceArea');
+const targetArea      = document.getElementById('targetArea');
+const logPanel        = document.getElementById('logPanel');
+const emptyState      = document.getElementById('emptyState');
+const sourcePaneEl    = document.getElementById('sourcePane');
+const targetPaneEl    = document.getElementById('targetPane');
+const toolbarFilename = document.getElementById('toolbarFilename');
+const progressPanel   = document.getElementById('progressPanel');
+const progressFile    = document.getElementById('progressFile');
+const progressPct     = document.getElementById('progressPct');
+const progressFill    = document.getElementById('progressFill');
+const progressSub     = document.getElementById('progressSub');
+const progressCounter = document.getElementById('progressCounter');
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+fileInput.addEventListener('change',   e => handleFiles([...e.target.files]));
+folderInput.addEventListener('change', e => handleFiles([...e.target.files]));
+mrpackInput.addEventListener('change', e => handleFiles([...e.target.files]));
+jarInput.addEventListener('change',    e => handleFiles([...e.target.files]));
+curseInput.addEventListener('change',  e => handleFiles([...e.target.files]));
+
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', async e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  const items = [...(e.dataTransfer.items || [])];
+  const hasDir = items.some(i => i.webkitGetAsEntry?.()?.isDirectory);
+  if (hasDir) {
+    log('Leyendo carpeta…', 'info');
+    const files = await readDroppedItems(items);
+    await handleFiles(files);
+  } else {
+    await handleFiles([...e.dataTransfer.files]);
+  }
+});
+
+// Leer carpetas dropeadas recursivamente con FileSystem API
+async function readDroppedItems(items) {
+  const files = [];
+  async function readEntry(entry) {
+    if (entry.isFile) {
+      const f = await new Promise(r => entry.file(r));
+      // Preservar ruta relativa
+      Object.defineProperty(f, 'webkitRelativePath', { value: entry.fullPath, writable: false });
+      files.push(f);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise(r => reader.readEntries(r));
+        for (const e of batch) await readEntry(e);
+      } while (batch.length > 0);
+    }
+  }
+  for (const item of items) {
+    const entry = item.webkitGetAsEntry?.();
+    if (entry) await readEntry(entry);
+    else if (item.getAsFile) files.push(item.getAsFile());
+  }
+  return files;
+}
+
+// ─── Detección de tipo de archivo ─────────────────────────────────────────────
+function getExt(name) {
+  const e = name.split('.').pop().toLowerCase();
+  return ['snbt','lang','jar','zip','mrpack'].includes(e) ? e : 'json';
+}
+
+function isTranslatable(path) {
+  if (path.endsWith('/')) return false;
+  const p = path.toLowerCase();
+  if (p.includes('/lang/') && (p.endsWith('.json') || p.endsWith('.lang'))) return true;
+  if (p.endsWith('.snbt')) return true;
+  if (p.includes('patchouli') && p.endsWith('.json')) return true;
+  return false;
+}
+
+// Detectar si un path es de una carpeta de instancia de Minecraft
+// y qué tipo de launcher es
+function detectInstallationType(files) {
+  const paths = files.map(f => (f.webkitRelativePath || f.name).replace(/\\/g, '/').toLowerCase());
+  // Modrinth: .minecraft/ o profiles/
+  if (paths.some(p => p.includes('/.minecraft/') || p.includes('/profiles/'))) return 'modrinth-folder';
+  // CurseForge: instances/ o modpacks/
+  if (paths.some(p => p.includes('/instances/') || p.includes('/modpacks/'))) return 'curseforge-folder';
+  // Genérico: si hay carpeta mods/ y muchos jars
+  const jars = files.filter(f => getExt(f.name) === 'jar');
+  if (jars.length > 3) return 'mods-folder';
+  return 'mixed';
+}
+
+// ─── Manejo de archivos ────────────────────────────────────────────────────────
+async function handleFiles(files) {
+  if (!files.length) return;
+
+  const jars    = files.filter(f => getExt(f.name) === 'jar');
+  const mrpacks = files.filter(f => getExt(f.name) === 'mrpack');
+  const zips    = files.filter(f => getExt(f.name) === 'zip');
+  const singles = files.filter(f => {
+    const ext = getExt(f.name);
+    if (['jar','mrpack','zip'].includes(ext)) return false;
+    const path = (f.webkitRelativePath || f.name).toLowerCase();
+    // Si viene de carpeta, solo tomar archivos en rutas traducibles
+    if (f.webkitRelativePath) return isTranslatable(path);
+    return ['snbt','lang','json'].includes(ext);
+  });
+
+  // mrpacks
+  for (const f of mrpacks) await loadMrpack(f);
+
+  // zips de curseforge
+  for (const f of zips) await loadCurseForgeZip(f);
+
+  // JARs: si son muchos, agrupar como carpeta de mods
+  if (jars.length > 3) {
+    const instType = detectInstallationType(files);
+    const label = {
+      'modrinth-folder':  '🟩 Instancia Modrinth',
+      'curseforge-folder':'🔶 Instancia CurseForge',
+      'mods-folder':      '📁 Carpeta de mods',
+      'mixed':            '📁 Mods cargados',
+    }[instType];
+
+    log(`Detectados ${jars.length} JARs (${label})`, 'info');
+    const pgid = uid();
+    const subgroupIds = [];
+    for (const f of jars) {
+      const childGid = await loadJar(f, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+    const totalFiles = subgroupIds.reduce((a, gid) => {
+      const g = state.groups.find(g => g.id === gid); return a + (g ? g.fileIds.length : 0);
+    }, 0);
+    if (subgroupIds.length > 0) {
+      state.groups.push({ id: pgid, type: 'modpack', subtype: 'folder', name: `${label} (${jars.length} mods)`, fileIds: [], subgroupIds, collapsed: false, icon: label.split(' ')[0] });
+      log(`✓ ${subgroupIds.length} mods con ${totalFiles} archivo(s) traducibles.`, 'ok');
+    }
+  } else {
+    for (const f of jars) await loadJar(f, null);
+  }
+
+  // Archivos sueltos
+  for (const f of singles) await loadSingleFile(f);
+
+  renderFileList();
+  updateButtons();
+}
+
+// ─── Loaders ──────────────────────────────────────────────────────────────────
+function loadSingleFile(f) {
+  return new Promise(resolve => {
+    if (state.files.find(x => x.name === f.name && !x.groupId)) { resolve(); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      state.files.push({ id: uid(), name: f.name, displayName: f.name, ext: getExt(f.name), original: e.target.result, translated: '', status: 'pending', groupId: null });
+      resolve();
+    };
+    reader.readAsText(f, 'UTF-8');
+  });
+}
+
+async function loadJar(f, parentGroupId) {
+  try {
+    const buf  = await f.arrayBuffer();
+    const zip  = await JSZip.loadAsync(buf);
+    const gid  = uid();
+    const fids = [];
+    const paths = Object.keys(zip.files).filter(isTranslatable);
+    if (!paths.length) return null;
+    for (const path of paths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: gid });
+      fids.push(fid);
+    }
+    state.groups.push({ id: gid, type: 'jar', name: f.name, zipObj: zip, fileIds: fids, collapsed: true, parentGroupId: parentGroupId || null });
+    return gid;
+  } catch { return null; }
+}
+
+async function loadMrpack(f) {
+  log(`Abriendo .mrpack: ${f.name}…`, 'info');
+  try {
+    const buf  = await f.arrayBuffer();
+    // Intentar con JSZip directamente
+    let zip;
+    try { zip = await JSZip.loadAsync(buf); }
+    catch { throw new Error('No se pudo leer el .mrpack. Instalá el modpack con tu launcher y cargá la carpeta de instancia.'); }
+
+    const pgid = uid();
+    const subgroupIds = [];
+    const directFids  = [];
+
+    const directPaths = Object.keys(zip.files).filter(p => isTranslatable(p));
+    for (const path of directPaths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: pgid });
+      directFids.push(fid);
+    }
+
+    const jarPaths = Object.keys(zip.files).filter(p => p.toLowerCase().endsWith('.jar') && !p.endsWith('/'));
+    for (const jarPath of jarPaths) {
+      const jarBuf  = await zip.files[jarPath].async('arraybuffer');
+      const jarFile = new File([jarBuf], jarPath.split('/').pop(), { type: 'application/java-archive' });
+      const childGid = await loadJar(jarFile, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+
+    state.groups.push({ id: pgid, type: 'modpack', subtype: 'modrinth', name: f.name, fileIds: directFids, subgroupIds, collapsed: false, icon: '🟩' });
+    const total = directFids.length + subgroupIds.reduce((a, gid) => { const g = state.groups.find(g => g.id === gid); return a + (g ? g.fileIds.length : 0); }, 0);
+    log(`✓ ${f.name}: ${total} archivo(s) traducibles.`, 'ok');
+    if (total === 0) log('ℹ Los mods se descargan por URL. Instalá el modpack y cargá la carpeta de instancia con el botón "Carpeta instancia".', 'info');
+  } catch (err) { log(`✗ ${f.name}: ${err.message}`, 'err'); }
+}
+
+async function loadCurseForgeZip(f) {
+  log(`Abriendo .zip: ${f.name}…`, 'info');
+  try {
+    const buf = await f.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    const pgid = uid();
+    const subgroupIds = [];
+    const directFids  = [];
+
+    const directPaths = Object.keys(zip.files).filter(p => isTranslatable(p));
+    for (const path of directPaths) {
+      const content = await zip.files[path].async('string');
+      const fid = uid();
+      state.files.push({ id: fid, name: path, displayName: path.split('/').pop(), ext: getExt(path), original: content, translated: '', status: 'pending', groupId: pgid });
+      directFids.push(fid);
+    }
+    const jarPaths = Object.keys(zip.files).filter(p => p.toLowerCase().endsWith('.jar') && !p.endsWith('/'));
+    for (const jarPath of jarPaths) {
+      const jarBuf  = await zip.files[jarPath].async('arraybuffer');
+      const jarFile = new File([jarBuf], jarPath.split('/').pop(), { type: 'application/java-archive' });
+      const childGid = await loadJar(jarFile, pgid);
+      if (childGid) subgroupIds.push(childGid);
+    }
+
+    const isCurse = !!zip.files['manifest.json'];
+    state.groups.push({ id: pgid, type: 'modpack', subtype: isCurse ? 'curseforge' : 'zip', name: f.name, fileIds: directFids, subgroupIds, collapsed: false, icon: isCurse ? '🔶' : '🗜️' });
+    const total = directFids.length + subgroupIds.reduce((a, gid) => { const g = state.groups.find(g => g.id === gid); return a + (g ? g.fileIds.length : 0); }, 0);
+    log(`✓ ${f.name}: ${total} archivo(s) traducibles.`, 'ok');
+    if (total === 0) log('ℹ CurseForge no incluye los JARs en el export. Instalá el modpack y usá "Carpeta instancia".', 'info');
+  } catch (err) { log(`✗ ${f.name}: ${err.message}`, 'err'); }
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderFileList() {
+  const topGroups   = state.groups.filter(g => !g.parentGroupId);
+  const standalones = state.files.filter(f => !f.groupId);
+  if (!topGroups.length && !standalones.length) {
+    fileListEl.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:11px;text-align:center;">Ningún archivo cargado</div>';
+    return;
+  }
+  let html = '';
+  for (const g of topGroups) html += renderGroup(g);
+  for (const f of standalones) html += `<div class="standalone-item">${fileItemHtml(f)}</div>`;
+  fileListEl.innerHTML = html;
+}
+
+function groupAllFiles(g) {
+  let ids = [...g.fileIds];
+  if (g.subgroupIds) for (const sid of g.subgroupIds) {
+    const sg = state.groups.find(x => x.id === sid);
+    if (sg) ids = ids.concat(groupAllFiles(sg));
+  }
+  return ids;
+}
+
+function renderGroup(g) {
+  const allFiles = groupAllFiles(g).map(id => state.files.find(f => f.id === id)).filter(Boolean);
+  const done = allFiles.filter(f => f.status === 'done').length;
+  const icon = g.icon || '📦';
+  const nameClass = g.type === 'modpack' ? 'amber' : 'gold';
+  let html = `<div class="group-box" id="grp-${g.id}">
+    <div class="group-header" onclick="toggleGroup(${g.id})">
+      <span class="group-icon">${icon}</span>
+      <span class="group-name ${nameClass}">${g.name}</span>
+      <span class="group-count">${done}/${allFiles.length}</span>
+      <button class="group-remove" onclick="removeGroup(event,${g.id})">✕</button>
+      <span class="group-toggle ${g.collapsed?'':'open'}">▶</span>
+    </div>
+    <div class="group-children ${g.collapsed?'collapsed':''}">`;
+
+  for (const fid of g.fileIds) {
+    const f = state.files.find(f => f.id === fid);
+    if (f) html += fileItemHtml(f);
+  }
+  if (g.subgroupIds) {
+    for (const sid of g.subgroupIds) {
+      const sg = state.groups.find(x => x.id === sid);
+      if (!sg) continue;
+      const sgFiles = sg.fileIds.map(id => state.files.find(f => f.id === id)).filter(Boolean);
+      const sgDone  = sgFiles.filter(f => f.status === 'done').length;
+      html += `<div>
+        <div class="subgroup-header" onclick="toggleGroup(${sg.id})">
+          <span class="group-icon">📦</span>
+          <span class="group-name gold" style="font-size:10px;">${sg.name}</span>
+          <span class="group-count">${sgDone}/${sgFiles.length}</span>
+          <span class="subgroup-toggle ${sg.collapsed?'':'open'}">▶</span>
+        </div>
+        <div class="subgroup-children ${sg.collapsed?'collapsed':''}">
+          ${sgFiles.map(f => fileItemHtml(f)).join('')}
+        </div></div>`;
+    }
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function fileItemHtml(f) {
+  const active = state.activeFileId === f.id ? 'active' : '';
+  return `<div class="file-item ${active}" onclick="selectFile(${f.id})">
+    <span class="file-ext ext-${f.ext}">${f.ext}</span>
+    <span class="file-name" title="${f.name}">${f.displayName}</span>
+    <span class="file-status status-${f.status}"></span>
+    ${!f.groupId?`<button class="file-remove" onclick="removeFile(event,${f.id})">✕</button>`:''}
+  </div>`;
+}
+
+function toggleGroup(gid) {
+  const g = state.groups.find(g => g.id === gid);
+  if (g) { g.collapsed = !g.collapsed; renderFileList(); }
+}
+
+function removeGroup(e, gid) {
+  e.stopPropagation();
+  const removeIds = (id) => {
+    const g = state.groups.find(g => g.id === id);
+    if (!g) return;
+    const allFids = groupAllFiles(g);
+    if (allFids.includes(state.activeFileId)) { state.activeFileId = null; clearEditor(); }
+    state.files = state.files.filter(f => !allFids.includes(f.id));
+    if (g.subgroupIds) g.subgroupIds.forEach(removeIds);
+    state.groups = state.groups.filter(g => g.id !== id);
+  };
+  removeIds(gid);
+  renderFileList(); updateButtons();
+}
+
+function removeFile(e, fid) {
+  e.stopPropagation();
+  if (state.activeFileId === fid) { state.activeFileId = null; clearEditor(); }
+  state.files = state.files.filter(f => f.id !== fid);
+  renderFileList(); updateButtons();
+}
+
+function selectFile(fid) {
+  saveCurrentEdits();
+  state.activeFileId = fid;
+  const f = state.files.find(f => f.id === fid);
+  if (!f) return;
+  showEditor(f); renderFileList();
+  toolbarFilename.innerHTML = `<span>Archivo:</span> ${f.name}`;
+  downloadBtn.disabled = !f.translated;
+}
+
+function saveCurrentEdits() {
+  if (state.activeFileId) {
+    const f = state.files.find(f => f.id === state.activeFileId);
+    if (f) f.translated = targetArea.value;
+  }
+}
+
+function showEditor(f) {
+  emptyState.style.display = 'none';
+  sourcePaneEl.style.display = 'flex';
+  targetPaneEl.style.display = 'flex';
+  sourceArea.value = f.original;
+  targetArea.value = f.translated;
+}
+
+function clearEditor() {
+  emptyState.style.display = 'flex';
+  sourcePaneEl.style.display = 'none';
+  targetPaneEl.style.display = 'none';
+  toolbarFilename.innerHTML = '<span>Seleccioná un archivo para ver su contenido</span>';
+  downloadBtn.disabled = true;
+}
+
+function updateButtons() {
+  translateBtn.disabled = state.files.length === 0;
+  downloadAllBtn.disabled = !state.files.some(f => f.translated);
+}
+
+// ─── Post-procesado ────────────────────────────────────────────────────────────
+const FALSE_ACCENTS = [
+  ['Tomó','Tomo'],['tomó','tomo'],['Minó','Mino'],['minó','mino'],
+  ['Portó','Porto'],['portó','porto'],['Espectró','Espectro'],['espectró','espectro'],
+  ['Altó','Alto'],['altó','alto'],['Arcané','Arcane'],['Rituló','Ritulo'],
+];
+function fixFalseAccents(text) {
+  let r = text;
+  for (const [w, f] of FALSE_ACCENTS) r = r.replaceAll(w, f);
+  return r;
+}
+function postProcessTranslation(content, ext) {
+  if (ext === 'json') return content.replace(/"([^"]+)":\s*"([^"]+)"/g, (m, k, v) => `"${k}": "${fixFalseAccents(v)}"`);
+  if (ext === 'lang') return content.split('\n').map(l => {
+    if (l.startsWith('#') || !l.includes('=')) return l;
+    const i = l.indexOf('='); return l.slice(0, i) + '=' + fixFalseAccents(l.slice(i + 1));
+  }).join('\n');
+  if (ext === 'snbt') return content.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m, inner) => `"${fixFalseAccents(inner)}"`);
+  return content;
+}
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+const LANG_LABELS = {
+  'es-AR':'español argentino informal (tuteo, vocabulario rioplatense)',
+  'es-ES':'español de España','es-MX':'español mexicano informal',
+  'pt-BR':'português brasileiro informal','fr':'français','de':'Deutsch',
+};
+function buildPrompt(file, lang, ctx) {
+  const hint = {
+    snbt: 'Archivo de quests SNBT. Traducí SOLO los valores de texto legible (title, subtitle, description, tasks). NO toques: IDs entre corchetes [item:namespace], comandos, claves técnicas, números.',
+    json: 'Archivo JSON de Patchouli o lang. Si es Patchouli: traducí "name","description","text","title","header". Si es lang JSON: traducí solo los valores, no las claves. NO toques: IDs, comandos, placeholders (%s, %d).',
+    lang: 'Archivo lang (clave=valor). Traducí SOLO los valores (después del =). NO toques las claves ni los placeholders (%s, %d, %1$s).',
+  }[file.ext] || 'Traducí solo el texto visible al usuario.';
+  return `Sos un traductor experto en mods de Minecraft. Traducí el siguiente archivo al ${LANG_LABELS[lang]||lang}.
+${ctx ? `El mod se llama "${ctx}".` : ''}
+${hint}
+Reglas:
+- Mantené el formato exacto (estructura, sangría, caracteres especiales).
+- Conservá el formato de color §a, §b, etc.
+- Los nombres de ítems son sustantivos, NO los conjugues como verbos. "Tomo" no "Tomó".
+- Devolvé ÚNICAMENTE el archivo traducido, sin explicaciones ni comentarios.
+Archivo:
+\`\`\`
+${file.original}
+\`\`\``;
+}
+
+// ─── Log ──────────────────────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const div = document.createElement('div');
+  div.className = `log-line ${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logPanel.appendChild(div);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+// ─── Progress ─────────────────────────────────────────────────────────────────
+function setProgress(done, total, fileName, sub) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  progressFill.style.width = `${pct}%`;
+  progressPct.textContent  = `${pct}%`;
+  progressFile.textContent = fileName || '—';
+  progressCounter.textContent = `${done} / ${total}`;
+  if (sub) progressSub.textContent = sub;
+}
+
+// ─── Traducción con cancelación ───────────────────────────────────────────────
+translateBtn.addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { log('⚠ Ingresá tu API key de Gemini.', 'err'); return; }
+
+  const lang    = document.getElementById('targetLang').value;
+  const ctx     = document.getElementById('modContext').value.trim();
+  const doPost  = document.getElementById('postProcess').checked;
+  const pending = state.files.filter(f => f.status === 'pending' || f.status === 'error');
+  if (!pending.length) { log('No hay archivos pendientes.', 'info'); return; }
+
+  state.cancelRequested = false;
+  translateBtn.disabled = true;
+  cancelBtn.classList.add('visible');
+  progressPanel.classList.add('visible');
+  setProgress(0, pending.length, '—', 'Iniciando…');
+
+  let done = 0; const total = pending.length;
+
+  for (const file of pending) {
+    // ── Chequear cancelación ──
+    if (state.cancelRequested) {
+      // Marcar los restantes como pending de vuelta
+      file.status = 'pending';
+      for (let i = pending.indexOf(file) + 1; i < pending.length; i++) pending[i].status = 'pending';
+      log(`⊘ Traducción cancelada. ${done}/${total} archivos completados.`, 'info');
+      break;
+    }
+
+    file.status = 'loading';
+    renderFileList();
+    const af = state.files.find(f => f.id === state.activeFileId);
+    if (af?.id === file.id) showEditor(file);
+    setProgress(done, total, file.displayName, `Archivo ${done + 1} de ${total}…`);
+    log(`Traduciendo ${file.displayName}…`, 'info');
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: buildPrompt(file, lang, ctx) }] }],
+            generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
+          }),
+        }
+      );
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+      const data = await res.json();
+      let translated = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      translated = translated.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '').trim();
+      if (!translated) throw new Error('Respuesta vacía');
+      if (doPost) translated = postProcessTranslation(translated, file.ext);
+      file.translated = translated;
+      file.status = 'done';
+      log(`✓ ${file.displayName}`, 'ok');
+    } catch (err) {
+      file.status = 'error';
+      log(`✗ ${file.displayName}: ${err.message}`, 'err');
+    }
+
+    done++;
+    setProgress(done, total,
+      done < total ? pending[done]?.displayName || '—' : '✓ Completado',
+      done < total ? `Archivo ${done + 1} de ${total}…` : 'Traducción finalizada'
+    );
+    renderFileList();
+    const activeF = state.files.find(f => f.id === state.activeFileId);
+    if (activeF?.id === file.id) { showEditor(file); downloadBtn.disabled = !file.translated; }
+    updateButtons();
+    if (done < total && !state.cancelRequested) await sleep(4200);
+  }
+
+  translateBtn.disabled = state.files.length === 0;
+  cancelBtn.classList.remove('visible');
+  state.cancelRequested = false;
+  if (done === total) log(`Listo: ${done}/${total} archivos procesados.`, 'ok');
+});
+
+cancelBtn.addEventListener('click', () => {
+  state.cancelRequested = true;
+  cancelBtn.classList.remove('visible');
+  cancelBtn.disabled = true;
+  setTimeout(() => { cancelBtn.disabled = false; }, 1000);
+});
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+function downloadCurrent() {
+  saveCurrentEdits();
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (!f || !f.translated) return;
+  triggerDownload(f.displayName, f.translated);
+}
+
+async function downloadAll() {
+  saveCurrentEdits();
+  const topGroups = state.groups.filter(g => !g.parentGroupId);
+  for (const g of topGroups) {
+    if (g.type === 'jar') { await downloadJar(g); }
+    else if (g.type === 'modpack') {
+      if (g.subgroupIds) for (const sid of g.subgroupIds) {
+        const sg = state.groups.find(x => x.id === sid);
+        if (sg) await downloadJar(sg);
+      }
+      const direct = g.fileIds.map(id => state.files.find(f => f.id === id)).filter(f => f?.translated);
+      if (direct.length) {
+        const z = new JSZip();
+        for (const f of direct) z.file(f.name, f.translated);
+        const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+        triggerDownloadBlob(g.name.replace(/\.(zip|mrpack)$/, '') + '_traducido.zip', blob);
+        await sleep(300);
+      }
+    }
+  }
+  for (const f of state.files.filter(f => !f.groupId && f.translated)) {
+    triggerDownload(f.displayName, f.translated); await sleep(150);
+  }
+}
+
+async function downloadJar(g) {
+  const files = g.fileIds.map(id => state.files.find(f => f.id === id)).filter(f => f?.translated);
+  if (!files.length) return;
+  log(`Empaquetando ${g.name}…`, 'info');
+  try {
+    const zip = g.zipObj;
+    for (const f of files) zip.file(f.name, f.translated);
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    triggerDownloadBlob(g.name, blob);
+    log(`✓ ${g.name} descargado.`, 'ok');
+    await sleep(300);
+  } catch (err) { log(`✗ Error al empaquetar ${g.name}: ${err.message}`, 'err'); }
+}
+
+function triggerDownload(filename, content) {
+  triggerDownloadBlob(filename, new Blob([content], { type: 'text/plain;charset=utf-8' }));
+}
+function triggerDownloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+targetArea.addEventListener('input', () => {
+  const f = state.files.find(f => f.id === state.activeFileId);
+  if (f) { f.translated = targetArea.value; downloadBtn.disabled = !targetArea.value; updateButtons(); }
+});
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(tab === 'translator' ? 'traductor' : 'tutorial')) t.classList.add('active');
+  });
+}
+
+// ─── Copy path ────────────────────────────────────────────────────────────────
+function copyPath(btn) {
+  const box = btn.parentElement;
+  const text = box.childNodes[0].textContent.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = 'Copiar', 1500);
+  });
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ─── Copy path ────────────────────────────────────────────────────────────────
+function copyPath(btn) {
+  const text = btn.previousElementSibling.textContent.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ OK';
+    setTimeout(() => btn.textContent = 'Copiar', 1500);
+  });
+}
+</script>
+</body>
+</html>
